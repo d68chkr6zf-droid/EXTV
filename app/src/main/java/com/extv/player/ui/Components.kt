@@ -433,7 +433,7 @@ fun CategoryChips(entries: List<CategoryEntry>, selectedId: String?, onSelect: (
 
 /** Petit lecteur VLC intégré à un écran (aperçu de chaîne, multi-écrans). url = null : arrêt. */
 @Composable
-fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier) {
+fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier, idleText: String? = "Aucune lecture") {
     if (androidx.compose.ui.platform.LocalInspectionMode.current) {
         // Rendu des captures d'écran : pas de moteur vidéo, une image de remplacement.
         Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF2B1A3A), Color(0xFF0E2236), Color(0xFF3A1A12))))) {
@@ -476,7 +476,7 @@ fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier) {
     LaunchedEffect(muted, url) { player.setVolume(if (muted) 0 else 100) }
     Box(modifier.background(Color.Black)) {
         AndroidView(factory = { layout }, modifier = Modifier.fillMaxSize())
-        if (url == null) Text("Aucune lecture", Modifier.align(Alignment.Center), color = C.TextDim)
+        if (url == null && idleText != null) Text(idleText, Modifier.align(Alignment.Center), color = C.TextDim)
     }
 }
 

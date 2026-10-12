@@ -252,7 +252,7 @@ private fun ChannelPanel(
     }.value
     Column(modifier) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))) {
-            VlcPreview(previewUrl, muted, Modifier.fillMaxSize())
+            VlcPreview(previewUrl, muted, Modifier.fillMaxSize(), idleText = null)
             if (previewUrl == null) {
                 Text(
                     if (channel == null) "Choisissez une chaîne" else "OK pour l'aperçu, OK à nouveau pour le plein écran",
