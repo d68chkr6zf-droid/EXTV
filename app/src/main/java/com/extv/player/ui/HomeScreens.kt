@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -453,16 +454,20 @@ private fun MainTile(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.TileLabel(title: String, icon: Int) {
-    Column(Modifier.align(Alignment.Center).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(painterResource(icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(64.dp))
-        Text(
-            title.uppercase(),
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 1.5.sp,
-            color = Color.White,
-            modifier = Modifier.padding(top = 8.dp),
-        )
+    // Tuile basse (smartphone en paysage) : icône et texte réduits pour que le titre reste lisible.
+    BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+        val small = maxHeight < 130.dp
+        Column(Modifier.padding(if (small) 4.dp else 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(painterResource(icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(if (small) 36.dp else 64.dp))
+            Text(
+                title.uppercase(),
+                fontSize = if (small) 17.sp else 22.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.5.sp,
+                color = Color.White,
+                modifier = Modifier.padding(top = if (small) 4.dp else 8.dp),
+            )
+        }
     }
 }
 
