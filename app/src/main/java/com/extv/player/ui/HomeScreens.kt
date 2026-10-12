@@ -548,11 +548,11 @@ private fun SmallTile(label: String, icon: Int, modifier: Modifier, onClick: () 
 private fun StarArrowButton(up: Boolean, description: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     FocusTile(onClick = onClick, modifier = Modifier.size(size), shape = CircleShape, normalColor = C.Surface2, focusScale = 1.12f) { focused ->
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Star, contentDescription = description, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(size * 0.42f))
+            Icon(Icons.Default.Star, contentDescription = description, tint = C.Accent, modifier = Modifier.size(size * 0.42f))
             Icon(
                 if (up) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = C.Accent,
+                tint = if (focused) C.Text else C.Accent,
                 modifier = Modifier.size(size * 0.38f),
             )
         }
