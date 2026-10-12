@@ -437,7 +437,6 @@ fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier) {
     val layout = remember { VLCVideoLayout(context) }
     val player = remember { MediaPlayer(app.libVlc) }
     androidx.compose.runtime.DisposableEffect(Unit) {
-        player.attachViews(layout, null, false, false)
         onDispose {
             player.stop()
             player.detachViews()
@@ -445,18 +444,25 @@ fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier) {
         }
     }
     LifecycleResumeEffect(url) {
+        // La surface vidéo est recréée au retour du plein écran : on la rattache à chaque reprise,
+        // sinon l'aperçu reste noir.
+        if (!player.vlcVout.areViewsAttached()) player.attachViews(layout, null, false, false)
         if (url != null) {
             val media = Media(app.libVlc, Uri.parse(url))
             media.setHWDecoderEnabled(app.store.hwDecoding, false)
             media.addOption(":http-user-agent=${app.store.userAgent}")
-            media.addOption(":network-caching=1500")
+            media.addOption(":network-caching=${app.store.networkCaching}")
+            media.addOption(":live-caching=${app.store.networkCaching}")
             player.setMedia(media)
             media.release()
             player.play()
         } else {
             player.stop()
         }
-        onPauseOrDispose { player.stop() }
+        onPauseOrDispose {
+            player.stop()
+            player.detachViews()
+        }
     }
     LaunchedEffect(muted, url) { player.setVolume(if (muted) 0 else 100) }
     Box(modifier.background(Color.Black)) {

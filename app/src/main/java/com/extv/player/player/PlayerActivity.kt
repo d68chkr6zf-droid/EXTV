@@ -121,6 +121,9 @@ class PlayerActivity : ComponentActivity() {
             "--live-caching=${store.networkCaching}",
             "--http-reconnect",
             "--audio-time-stretch",
+            // Flux en direct : ne pas jeter d'images quand l'horloge du serveur dérive (saccades).
+            "--clock-jitter=0",
+            "--clock-synchro=0",
             "-v",
         )
         libVlc = LibVLC(this, options)

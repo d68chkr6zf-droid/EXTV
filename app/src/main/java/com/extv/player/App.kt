@@ -34,7 +34,7 @@ class App : Application() {
 
     /** Moteur VLC partagé par les aperçus intégrés (TV en direct, multi-écrans). */
     val libVlc: LibVLC by lazy {
-        LibVLC(this, arrayListOf("--network-caching=1500", "--http-reconnect"))
+        LibVLC(this, arrayListOf("--network-caching=3000", "--http-reconnect", "--clock-jitter=0", "--clock-synchro=0"))
     }
 
     override fun onCreate() {

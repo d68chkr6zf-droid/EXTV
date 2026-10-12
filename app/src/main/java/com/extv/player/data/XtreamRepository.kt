@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import android.util.JsonReader
+import android.util.JsonToken
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -57,6 +59,50 @@ class XtreamRepository(
     private suspend fun apiArray(action: String, vararg params: Pair<String, String>): JSONArray =
         api(action, *params) as? JSONArray ?: JSONArray()
 
+    /**
+     * Grandes listes (chaînes, films, séries) : lecture en flux, sans charger toute la réponse en mémoire.
+     * Seuls les champs simples (texte, nombre) sont gardés ; les tableaux et objets imbriqués sont ignorés.
+     */
+    private suspend fun <T> apiList(action: String, map: (Map<String, String>, Int) -> T): List<T> = withContext(Dispatchers.IO) {
+        val url = "$base/player_api.php".toHttpUrlOrNull()!!.newBuilder()
+            .addQueryParameter("username", user)
+            .addQueryParameter("password", pass)
+            .addQueryParameter("action", action)
+            .build()
+        http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Le serveur a répondu HTTP ${r.code}")
+            val body = r.body ?: return@use emptyList()
+            val out = ArrayList<T>()
+            JsonReader(body.charStream()).use { reader ->
+                if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                    reader.skipValue()
+                    return@use
+                }
+                reader.beginArray()
+                while (reader.hasNext()) {
+                    if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                        reader.skipValue()
+                        continue
+                    }
+                    val fields = HashMap<String, String>(16)
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        val key = reader.nextName()
+                        when (reader.peek()) {
+                            JsonToken.STRING, JsonToken.NUMBER -> reader.nextString().trim().takeIf { it.isNotEmpty() }?.let { fields[key] = it }
+                            JsonToken.BOOLEAN -> fields[key] = if (reader.nextBoolean()) "1" else "0"
+                            else -> reader.skipValue()
+                        }
+                    }
+                    reader.endObject()
+                    out += map(fields, out.size)
+                }
+                reader.endArray()
+            }
+            out
+        }
+    }
+
     // --- Catalogue ---------------------------------------------------------------------------
 
     override suspend fun categories(type: ContentType): List<Category> = mutex.withLock {
@@ -74,18 +120,18 @@ class XtreamRepository(
 
     override suspend fun liveChannels(categoryId: String?): List<LiveChannel> {
         val all = mutex.withLock {
-            liveCache ?: apiArray("get_live_streams").objects().mapIndexed { i, o ->
-                val id = o.str("stream_id") ?: ""
+            liveCache ?: apiList("get_live_streams") { o, i ->
+                val id = o["stream_id"] ?: ""
                 LiveChannel(
                     id = id,
-                    name = o.str("name") ?: "Chaîne $id",
-                    logo = o.str("stream_icon"),
-                    categoryId = o.str("category_id") ?: "",
-                    epgId = o.str("epg_channel_id"),
+                    name = o["name"] ?: "Chaîne $id",
+                    logo = o["stream_icon"],
+                    categoryId = o["category_id"] ?: "",
+                    epgId = o["epg_channel_id"],
                     streamUrl = "$base/live/$user/$pass/$id.${store.liveFormat}",
-                    hasArchive = o.str("tv_archive") == "1",
-                    archiveDays = o.str("tv_archive_duration")?.toIntOrNull() ?: 0,
-                    num = o.str("num")?.toIntOrNull() ?: (i + 1),
+                    hasArchive = o["tv_archive"] == "1",
+                    archiveDays = o["tv_archive_duration"]?.toIntOrNull() ?: 0,
+                    num = o["num"]?.toIntOrNull() ?: (i + 1),
                 )
             }.also {
                 liveCache = it
@@ -97,17 +143,17 @@ class XtreamRepository(
 
     override suspend fun movies(categoryId: String?): List<Movie> {
         val all = mutex.withLock {
-            movieCache ?: apiArray("get_vod_streams").objects().map { o ->
-                val id = o.str("stream_id") ?: ""
-                val ext = o.str("container_extension") ?: "mp4"
+            movieCache ?: apiList("get_vod_streams") { o, _ ->
+                val id = o["stream_id"] ?: ""
+                val ext = o["container_extension"] ?: "mp4"
                 Movie(
                     id = id,
-                    name = o.str("name") ?: "Film $id",
-                    poster = o.str("stream_icon"),
-                    categoryId = o.str("category_id") ?: "",
+                    name = o["name"] ?: "Film $id",
+                    poster = o["stream_icon"],
+                    categoryId = o["category_id"] ?: "",
                     streamUrl = "$base/movie/$user/$pass/$id.$ext",
-                    rating = o.str("rating")?.takeIf { it != "0" },
-                    added = (o.str("added")?.toLongOrNull() ?: 0) * 1000,
+                    rating = o["rating"]?.takeIf { it != "0" },
+                    added = (o["added"]?.toLongOrNull() ?: 0) * 1000,
                 )
             }.also {
                 movieCache = it
@@ -119,15 +165,15 @@ class XtreamRepository(
 
     override suspend fun series(categoryId: String?): List<Series> {
         val all = mutex.withLock {
-            seriesCache ?: apiArray("get_series").objects().map { o ->
+            seriesCache ?: apiList("get_series") { o, _ ->
                 Series(
-                    id = o.str("series_id") ?: "",
-                    name = o.str("name") ?: "?",
-                    cover = o.str("cover"),
-                    categoryId = o.str("category_id") ?: "",
-                    plot = o.str("plot"),
-                    rating = o.str("rating")?.takeIf { it != "0" },
-                    added = (o.str("last_modified")?.toLongOrNull() ?: 0) * 1000,
+                    id = o["series_id"] ?: "",
+                    name = o["name"] ?: "?",
+                    cover = o["cover"],
+                    categoryId = o["category_id"] ?: "",
+                    plot = o["plot"],
+                    rating = o["rating"]?.takeIf { it != "0" },
+                    added = (o["last_modified"]?.toLongOrNull() ?: 0) * 1000,
                 )
             }.also {
                 seriesCache = it
@@ -211,6 +257,7 @@ class XtreamRepository(
         val now = System.currentTimeMillis()
         return parseListings(api("get_short_epg", "stream_id" to channel.id, "limit" to "$limit"))
             .map { it.first }.filter { it.end > now }.sortedBy { it.start }
+            .dedupePrograms()
     }
 
     override suspend fun catchup(channel: LiveChannel): List<EpgProgram> {
@@ -219,7 +266,9 @@ class XtreamRepository(
         return parseListings(api("get_simple_data_table", "stream_id" to channel.id))
             .filter { (p, archived) -> p.end < now && (archived || p.start > since) }
             .map { it.first }
-            .sortedByDescending { it.start }
+            .sortedBy { it.start }
+            .dedupePrograms()
+            .reversed()
     }
 
     override fun catchupUrl(channel: LiveChannel, program: EpgProgram): String {
@@ -276,4 +325,15 @@ class XtreamRepository(
             }
         }
     }
+}
+
+/** Certains guides contiennent le même programme deux fois, décalé d'une minute : on n'en garde qu'un. */
+private fun List<EpgProgram>.dedupePrograms(): List<EpgProgram> {
+    val out = ArrayList<EpgProgram>(size)
+    for (p in this) {
+        val last = out.lastOrNull()
+        if (last != null && last.title == p.title && kotlin.math.abs(last.start - p.start) < 10 * 60_000) continue
+        out += p
+    }
+    return out
 }
