@@ -354,15 +354,24 @@ fun CategorySidebar(
     onSelect: (Category) -> Unit,
     modifier: Modifier = Modifier,
     firstFocus: FocusRequester? = null,
+    query: String? = null,
+    onQuery: ((String) -> Unit)? = null,
+    searchHint: String = "Rechercher",
 ) {
     val parental = App.instance.parental
     var filter by remember { mutableStateOf("") }
-    val shown = remember(entries, filter) {
+    // Avec onQuery, le champ cherche dans le contenu (TOUT) ; sinon il filtre les catégories.
+    val searchesContent = onQuery != null
+    val shown = remember(entries, filter, searchesContent) {
         val f = filter.normalized().trim()
-        if (f.isEmpty()) entries else entries.filter { it.category.name.normalized().contains(f) }
+        if (searchesContent || f.isEmpty()) entries else entries.filter { it.category.name.normalized().contains(f) }
     }
     Column(modifier) {
-        SearchField(filter, "Rechercher dans les catégories", Modifier.padding(bottom = 8.dp)) { filter = it }
+        if (onQuery != null) {
+            SearchField(query.orEmpty(), searchHint, Modifier.padding(bottom = 8.dp), onQuery)
+        } else {
+            SearchField(filter, "Rechercher dans les catégories", Modifier.padding(bottom = 8.dp)) { filter = it }
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp)) {
             itemsIndexed(shown) { i, e ->
                 val selected = e.category.id == selectedId

@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import coil.compose.AsyncImage
 import com.extv.player.App
 import com.extv.player.data.Category
+import com.extv.player.data.normalized
 import com.extv.player.data.ContentType
 import com.extv.player.data.Favorite
 import com.extv.player.data.Movie
@@ -111,6 +112,8 @@ private fun <T> CatalogScreen(
     var selected by remember { mutableStateOf<Category?>(null) }
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
+    var query by remember { mutableStateOf("") }
+    val searchHint = "Rechercher ${if (title == "Séries") "une série" else "un film"}"
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
         LoadView(entries) { list ->
@@ -118,13 +121,25 @@ private fun <T> CatalogScreen(
                 runCatching { firstCategory.requestFocus() }
             }
             val category = selected ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
-            val items = rememberLoader(category?.id) { category?.let { loadItems(it.id) }.orEmpty() }
+            val q = query.normalized().trim()
+            // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
+            val items = rememberLoader(category?.id, q) {
+                if (q.isEmpty()) {
+                    category?.let { loadItems(it.id) }.orEmpty()
+                } else {
+                    kotlinx.coroutines.delay(300)
+                    val all = loadItems(Category.ALL)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        all.filter { name(it).normalized().contains(q) }
+                    }
+                }
+            }
 
             val grid: @Composable (Modifier) -> Unit = { m ->
                 Column(m) {
                     if (wide) {
                         Text(
-                            (category?.name ?: title).uppercase(),
+                            if (q.isNotEmpty()) "RÉSULTATS POUR « ${query.trim().uppercase()} »" else (category?.name ?: title).uppercase(),
                             Modifier.fillMaxWidth().padding(bottom = 12.dp),
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Black,
@@ -134,7 +149,7 @@ private fun <T> CatalogScreen(
                     }
                     LoadView(items) { all ->
                         if (all.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Aucun contenu", color = C.TextDim) }
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucun résultat dans TOUT" else "Aucun contenu", color = C.TextDim) }
                         } else {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(
@@ -173,7 +188,16 @@ private fun <T> CatalogScreen(
                             ExtvLogo(24.sp)
                             Text("  |  $title", fontSize = 18.sp, color = C.TextDim)
                         }
-                        CategorySidebar(list, category?.id, select, Modifier.fillMaxSize(), firstCategory)
+                        CategorySidebar(
+                            list,
+                            category?.id,
+                            { query = ""; select(it) },
+                            Modifier.fillMaxSize(),
+                            firstCategory,
+                            query = query,
+                            onQuery = { query = it },
+                            searchHint = searchHint,
+                        )
                     }
                     grid(Modifier.weight(1f).fillMaxHeight())
                 }
@@ -182,7 +206,8 @@ private fun <T> CatalogScreen(
                     ExtvLogo(22.sp)
                     Text("  |  $title", fontSize = 16.sp, color = C.TextDim)
                 }
-                CategoryChips(list, category?.id, select, Modifier.padding(vertical = 6.dp))
+                SearchField(query, searchHint, Modifier.padding(top = 8.dp)) { query = it }
+                CategoryChips(list, category?.id, { query = ""; select(it) }, Modifier.padding(vertical = 6.dp))
                 grid(Modifier.fillMaxSize())
             }
         }
