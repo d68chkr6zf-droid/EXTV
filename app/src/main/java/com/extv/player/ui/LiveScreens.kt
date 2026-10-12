@@ -49,7 +49,6 @@ import coil.compose.AsyncImage
 import com.extv.player.App
 import com.extv.player.R
 import com.extv.player.data.Category
-import com.extv.player.data.normalized
 import com.extv.player.data.ContentType
 import com.extv.player.data.EpgProgram
 import com.extv.player.data.Favorite
@@ -102,7 +101,6 @@ fun LiveScreen() {
     var muted by remember { mutableStateOf(false) }
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
-    var query by remember { mutableStateOf("") }
 
     fun toggleFavorite(ch: LiveChannel) {
         val fav = app.store.toggleFavorite(ch.toFavorite())
@@ -120,24 +118,12 @@ fun LiveScreen() {
                 runCatching { firstCategory.requestFocus() }
             }
             val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
-            val q = query.normalized().trim()
-            // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
-            val channels = rememberLoader(category?.id, q) {
-                if (q.isEmpty()) {
-                    category?.let { repo.liveIn(it.id) }.orEmpty()
-                } else {
-                    kotlinx.coroutines.delay(300)
-                    val all = repo.liveIn(Category.ALL)
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                        all.filter { it.name.normalized().contains(q) }
-                    }
-                }
-            }
+            val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
 
             val channelList: @Composable (Modifier) -> Unit = { m ->
                 LoadView(channels, m) { chs ->
                     if (chs.isEmpty()) {
-                        Box(m, contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucune chaîne trouvée dans TOUT" else "Aucune chaîne dans cette catégorie", color = C.TextDim) }
+                        Box(m, contentAlignment = Alignment.Center) { Text("Aucune chaîne dans cette catégorie", color = C.TextDim) }
                     } else {
                         LazyColumn(m, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(4.dp)) {
                             itemsIndexed(chs, key = { i, c -> "$i-${c.id}" }) { i, ch ->
@@ -164,16 +150,7 @@ fun LiveScreen() {
 
             if (wide) {
                 Row(Modifier.fillMaxSize().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    CategorySidebar(
-                        list,
-                        category?.id,
-                        { query = ""; select(it) },
-                        Modifier.width(260.dp).fillMaxHeight(),
-                        firstCategory,
-                        query = query,
-                        onQuery = { query = it },
-                        searchHint = "Rechercher une chaîne",
-                    )
+                    CategorySidebar(list, category?.id, select, Modifier.width(260.dp).fillMaxHeight(), firstCategory, showSearch = false)
                     channelList(Modifier.weight(1f).fillMaxHeight())
                     ChannelPanel(
                         channel = previewing ?: focused,
@@ -189,8 +166,7 @@ fun LiveScreen() {
                     )
                 }
             } else {
-                SearchField(query, "Rechercher une chaîne", Modifier.padding(top = 8.dp)) { query = it }
-                CategoryChips(list, category?.id, { query = ""; select(it) }, Modifier.padding(top = 8.dp))
+                CategoryChips(list, category?.id, select, Modifier.padding(top = 8.dp))
                 channelList(Modifier.fillMaxSize())
             }
         }

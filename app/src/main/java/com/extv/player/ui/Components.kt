@@ -357,6 +357,7 @@ fun CategorySidebar(
     query: String? = null,
     onQuery: ((String) -> Unit)? = null,
     searchHint: String = "Rechercher",
+    showSearch: Boolean = true,
 ) {
     val parental = App.instance.parental
     var filter by remember { mutableStateOf("") }
@@ -367,7 +368,9 @@ fun CategorySidebar(
         if (searchesContent || f.isEmpty()) entries else entries.filter { it.category.name.normalized().contains(f) }
     }
     Column(modifier) {
-        if (onQuery != null) {
+        if (!showSearch) {
+            // Pas de champ de recherche (TV en direct).
+        } else if (onQuery != null) {
             SearchField(query.orEmpty(), searchHint, Modifier.padding(bottom = 8.dp), onQuery)
         } else {
             SearchField(filter, "Rechercher dans les catégories", Modifier.padding(bottom = 8.dp)) { filter = it }
