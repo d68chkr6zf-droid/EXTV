@@ -27,16 +27,6 @@ android {
         }
     }
 
-    // Un APK par architecture : libVLC embarque des bibliothèques natives volumineuses.
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
-    }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -45,7 +45,7 @@ L'écran de connexion propose `http://718e.dataxtm.com` comme serveur Xtream (ch
 ./gradlew assembleDebug
 # APK : app/build/outputs/apk/debug/
 adb connect <ip-de-la-box>
-adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk   # ou armeabi-v7a selon la box
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Sans rien installer : GitHub Actions
@@ -81,7 +81,7 @@ app/src/main/java/com/extv/player/
 ```
 
 ## Notes techniques
-- `libvlc-all` ajoute environ 30 à 40 Mo par architecture ; le build génère un APK par architecture (`splits.abi`) plus un APK universel.
+- `libvlc-all` ajoute environ 30 à 40 Mo par architecture ; le build génère un seul APK (`EXTV.apk`) compatible avec tous les appareils.
 - Le code PIN par défaut est **0000** (modifiable dans Paramètres).
 - Les mots de passe sont stockés dans les SharedPreferences de l'application ; passer à `EncryptedSharedPreferences` avant une diffusion publique.
 - Licence : libVLC est sous LGPL 2.1+. Une application qui l'embarque doit mentionner cette licence et permettre le remplacement de la bibliothèque (ce qui est le cas avec la dépendance Maven dynamique).

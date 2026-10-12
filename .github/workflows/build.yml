@@ -19,12 +19,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compiler l'APK de debug
         run: ./gradlew assembleDebug --stacktrace
-      - name: Renommer les APK
+      - name: Renommer l'APK
         run: |
           mkdir dist
-          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/EXTV-universel.apk
-          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk dist/EXTV-arm64.apk
-          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk dist/EXTV-armv7.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/EXTV.apk
       - uses: actions/upload-artifact@v4
         with:
           name: extv-debug
