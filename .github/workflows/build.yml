@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,7 +19,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compiler l'APK de debug
         run: ./gradlew assembleDebug --stacktrace
+      - name: Renommer les APK
+        run: |
+          mkdir dist
+          cp app/build/outputs/apk/debug/app-universal-debug.apk dist/EXTV-universel.apk
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk dist/EXTV-arm64.apk
+          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk dist/EXTV-armv7.apk
       - uses: actions/upload-artifact@v4
         with:
           name: extv-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/*.apk
+      - name: Publier la dernière version (lien de téléchargement direct)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: EXTV (dernière version)
+          prerelease: true
+          make_latest: true
+          files: dist/*.apk
