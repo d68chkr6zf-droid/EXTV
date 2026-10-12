@@ -2,6 +2,8 @@ package com.extv.player
 
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ComposeView
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -50,7 +52,7 @@ class ScreenshotTest {
     private fun shoot(name: String, device: DeviceConfig, content: @Composable () -> Unit) {
         paparazzi.unsafeUpdateConfig(deviceConfig = device)
         // Rendu après un court délai pour laisser les données (fictives) se charger.
-        val view = ComposeView(paparazzi.context).apply { setContent { ExtvTheme { content() } } }
+        val view = ComposeView(paparazzi.context).apply { setContent { CompositionLocalProvider(LocalInspectionMode provides true) { ExtvTheme { content() } } } }
         paparazzi.snapshot(view, name, offsetMillis = 3_000L)
     }
 

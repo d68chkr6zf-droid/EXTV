@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -267,6 +268,9 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     val scope = rememberCoroutineScope()
     val size = windowSize()
     val compact = size == WindowSize.Compact
+    // Grille horizontale sur TV, et sur smartphone/tablette tenus en paysage.
+    val config = LocalConfiguration.current
+    val grid = size == WindowSize.Expanded || (!compact && config.screenWidthDp > config.screenHeightDp)
     val account = rememberLoader(app.store.activeProfileId) { repo.accountInfo() }
     val now = rememberNow()
     val statuses = remember { mutableStateMapOf<ContentType, CatalogStatus>() }
@@ -328,16 +332,17 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             onSettings = { onNavigate(Routes.SETTINGS) },
             onExit = { activity?.finish() },
         )
-        Spacer(Modifier.height(if (compact) 14.dp else 24.dp))
-        if (size == WindowSize.Expanded) {
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        Spacer(Modifier.height(if (compact || config.screenHeightDp < 500) 14.dp else 24.dp))
+        if (grid) {
+            val gap = if (size == WindowSize.Expanded) 20.dp else 12.dp
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 live(Modifier.weight(1f).fillMaxHeight())
-                Column(Modifier.weight(1.75f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Row(Modifier.weight(1.7f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Column(Modifier.weight(1.75f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    Row(Modifier.weight(1.7f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         movies(Modifier.weight(1f).fillMaxHeight())
                         series(Modifier.weight(1f).fillMaxHeight())
                     }
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         smallTiles(Modifier.weight(1f).fillMaxHeight())
                     }
                 }
@@ -355,7 +360,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
                 expiration?.let { Text(it, color = C.TextDim, fontSize = 13.sp, modifier = Modifier.align(Alignment.CenterHorizontally)) }
             }
         }
-        if (size == WindowSize.Expanded) {
+        if (grid) {
             expiration?.let {
                 Text(it, color = C.TextDim, fontSize = 14.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 14.dp))
             }
