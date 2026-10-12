@@ -295,8 +295,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             onRefresh = { load(ContentType.SERIES, true) }) { onNavigate(Routes.SERIES) }
     }
     val smallTiles: @Composable (Modifier) -> Unit = { m ->
-        SmallTile("Guide TV", R.drawable.ic_guide, m) { onNavigate(Routes.GUIDE) }
-        SmallTile("Multi-écrans", R.drawable.ic_multiscreen, m) { onNavigate(Routes.MULTI) }
+        SmallTile("Favoris TV", R.drawable.ic_fav_tv, m) { onNavigate(Routes.FAV_TV) }
+        SmallTile("Favoris Films & Séries", R.drawable.ic_fav_vod, m) { onNavigate(Routes.FAV_VOD) }
         SmallTile("Replay", R.drawable.ic_replay, m) { onNavigate(Routes.REPLAY) }
     }
     val expiration = account.value?.expDate?.let { "Abonnement valable jusqu'au ${formatLongDate(it)}" }

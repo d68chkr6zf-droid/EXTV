@@ -56,13 +56,18 @@ import kotlinx.coroutines.launch
 // --- Favoris -------------------------------------------------------------------------------------
 
 @Composable
-fun FavoritesScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
+fun FavoritesScreen(
+    openMovie: (Movie) -> Unit,
+    openSeries: (Series) -> Unit,
+    title: String = "Favoris",
+    types: Set<ContentType> = ContentType.values().toSet(),
+) {
     val app = App.instance
     val repo = app.repository() ?: return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var favorites by remember { mutableStateOf(app.store.favorites()) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { favorites = app.store.favorites() }
+    var favorites by remember { mutableStateOf(app.store.favorites().filter { it.type in types }) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { favorites = app.store.favorites().filter { it.type in types } }
     var message by remember { mutableStateOf<String?>(null) }
 
     fun open(f: Favorite) {
@@ -87,10 +92,15 @@ fun FavoritesScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
-        ScreenTitle("Favoris")
+        ScreenTitle(title)
         message?.let { Text(it, color = C.Error, modifier = Modifier.padding(bottom = 12.dp)) }
         if (favorites.isEmpty()) {
-            Text("Aucun favori pour l'instant. Ajoutez-en depuis une chaîne, un film ou une série.", color = C.TextDim)
+            Text(
+                if (ContentType.LIVE in types && types.size == 1) "Aucune chaîne favorite. Restez appuyé sur une chaîne pour l'ajouter."
+                else if (ContentType.LIVE !in types) "Aucun film ni série en favori. Restez appuyé sur une affiche pour l'ajouter."
+                else "Aucun favori pour l'instant. Ajoutez-en depuis une chaîne, un film ou une série.",
+                color = C.TextDim,
+            )
         }
         val first = remember { FocusRequester() }
         var firstAssigned = false

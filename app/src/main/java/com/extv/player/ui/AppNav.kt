@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.extv.player.App
+import com.extv.player.data.ContentType
 import com.extv.player.data.LiveChannel
 import com.extv.player.data.Movie
 import com.extv.player.data.Series
@@ -32,6 +33,8 @@ object Routes {
     const val SERIES = "series"
     const val SERIES_DETAIL = "seriesDetail"
     const val FAVORITES = "favorites"
+    const val FAV_TV = "favorites_tv"
+    const val FAV_VOD = "favorites_vod"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
     const val LOCKED_CATEGORIES = "lockedCategories"
@@ -80,6 +83,17 @@ fun AppNav() {
         composable(Routes.SERIES) { SeriesScreen(onOpen = openSeries) }
         composable(Routes.SERIES_DETAIL) { SeriesDetailScreen() }
         composable(Routes.FAVORITES) { FavoritesScreen(openMovie = openMovie, openSeries = openSeries) }
+        composable(Routes.FAV_TV) {
+            FavoritesScreen(openMovie = openMovie, openSeries = openSeries, title = "Favoris TV", types = setOf(ContentType.LIVE))
+        }
+        composable(Routes.FAV_VOD) {
+            FavoritesScreen(
+                openMovie = openMovie,
+                openSeries = openSeries,
+                title = "Favoris Films & Séries",
+                types = setOf(ContentType.MOVIE, ContentType.SERIES),
+            )
+        }
         composable(Routes.SEARCH) { SearchScreen(openMovie = openMovie, openSeries = openSeries) }
         composable(Routes.SETTINGS) {
             SettingsScreen(
