@@ -68,6 +68,9 @@ class ScreenshotTest {
     @Test fun phoneMovies() = shoot("phone_3_films", PHONE) { MoviesScreen(onOpen = {}) }
     @Test fun phoneMovie() = shoot("phone_4_fiche_film", PHONE) { MovieDetailScreen() }
 
+    @Test fun phoneLandHome() = shoot("phone_5_accueil_paysage", PHONE_LAND) { HomeScreen(onNavigate = {}, onSwitchProfile = {}) }
+    @Test fun phoneLandLive() = shoot("phone_6_direct_paysage", PHONE_LAND) { LiveScreen() }
+
     @Test fun tabletHome() = shoot("tablette_1_accueil", TABLET) { HomeScreen(onNavigate = {}, onSwitchProfile = {}) }
 
     companion object {
@@ -80,6 +83,11 @@ class ScreenshotTest {
             orientation = ScreenOrientation.LANDSCAPE,
         )
         val PHONE = DeviceConfig.PIXEL_5
+        val PHONE_LAND = DeviceConfig.PIXEL_5.copy(
+            screenWidth = DeviceConfig.PIXEL_5.screenHeight,
+            screenHeight = DeviceConfig.PIXEL_5.screenWidth,
+            orientation = ScreenOrientation.LANDSCAPE,
+        )
         val TABLET = DeviceConfig.PIXEL_C
     }
 }
