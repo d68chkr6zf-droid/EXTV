@@ -123,6 +123,8 @@ class PlayerActivity : ComponentActivity() {
             "--audio-time-stretch",
             // Flux en direct : ne pas jeter d'images quand l'horloge du serveur dérive (saccades).
             "--aout=${store.audioOutput}",
+            // Langue préférée : français (piste audio et sous-titres quand le fichier les décrit).
+            "--audio-language=fr,fre,fra,french,français",
             "--clock-jitter=0",
             "--clock-synchro=0",
             "-v",
@@ -171,6 +173,7 @@ class PlayerActivity : ComponentActivity() {
     private fun playCurrent() {
         handler.removeCallbacks(retryLive)
         val item = items.getOrNull(index) ?: return
+        frenchChosen = false
         errorText = null
         timeMs = 0
         lengthMs = 0
@@ -232,10 +235,17 @@ class PlayerActivity : ComponentActivity() {
      * Certains fichiers (séries surtout) démarrent avec la piste audio désactivée ou sur une piste
      * illisible : on active la première piste audio disponible.
      */
+    private var frenchChosen = false
+
     private val ensureAudio = Runnable {
         if (!::mediaPlayer.isInitialized) return@Runnable
         val tracks = mediaPlayer.audioTracks?.filter { it.id >= 0 }.orEmpty()
-        if (tracks.isNotEmpty() && tracks.none { it.id == mediaPlayer.audioTrack }) {
+        // Français par défaut (une seule fois par vidéo, pour respecter un choix fait ensuite à la main).
+        val french = tracks.firstOrNull { t -> FRENCH.any { t.name.orEmpty().lowercase().contains(it) } }
+        if (!frenchChosen && french != null) {
+            frenchChosen = true
+            if (mediaPlayer.audioTrack != french.id) mediaPlayer.setAudioTrack(french.id)
+        } else if (tracks.isNotEmpty() && tracks.none { it.id == mediaPlayer.audioTrack }) {
             mediaPlayer.setAudioTrack(tracks.first().id)
         }
         if (mediaPlayer.volume <= 0) mediaPlayer.setVolume(100)
@@ -492,3 +502,6 @@ class PlayerActivity : ComponentActivity() {
         )
     }
 }
+
+/** Mots qui identifient une piste audio française dans le nom donné par VLC. */
+private val FRENCH = listOf("fr", "français", "francais", "french", "vf", "vff", "vfq")
