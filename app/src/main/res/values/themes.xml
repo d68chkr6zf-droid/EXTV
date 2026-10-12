@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EXTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorAccent">#1FB89A</item>
+    </style>
+    <style name="Theme.EXTV.Fullscreen">
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
