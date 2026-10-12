@@ -27,6 +27,14 @@ jobs:
         with:
           name: extv-debug
           path: dist/*.apk
+      - name: Retirer les anciens fichiers de la page de téléchargement
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
+            | grep -vx 'EXTV.apk' \
+            | xargs -r -I{} gh release delete-asset latest {} --repo "$GITHUB_REPOSITORY" -y || true
       - name: Publier la dernière version (lien de téléchargement direct)
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
