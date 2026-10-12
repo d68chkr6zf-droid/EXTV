@@ -2,6 +2,7 @@ package com.extv.player.player
 
 import android.content.Context
 import android.content.Intent
+import com.extv.player.App
 import com.extv.player.data.ContentType
 
 /**
@@ -34,6 +35,7 @@ object PlayQueue {
         this.items = items
         this.index = index.coerceIn(items.indices)
         this.live = live
-        context.startActivity(Intent(context, PlayerActivity::class.java))
+        val native = App.instance.store.playerEngine == "native"
+        context.startActivity(Intent(context, if (native) NativePlayerActivity::class.java else PlayerActivity::class.java))
     }
 }

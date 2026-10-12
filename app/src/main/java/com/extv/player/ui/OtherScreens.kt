@@ -232,12 +232,16 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 a.maxConnections?.let { InfoRow("Connexions", "${a.activeConnections ?: 0} / $it") }
             }
 
-            Section("Lecteur (VLC)")
-            SettingRow("Décodage matériel", if (store.hwDecoding) "Activé" else "Désactivé", first) {
+            Section("Lecteur")
+            SettingRow("Lecteur vidéo", if (store.playerEngine == "native") "Natif (Android)" else "VLC", first) {
+                store.playerEngine = if (store.playerEngine == "native") "vlc" else "native"
+                changed()
+            }
+            SettingRow("Décodage matériel (VLC)", if (store.hwDecoding) "Activé" else "Désactivé") {
                 store.hwDecoding = !store.hwDecoding
                 changed()
             }
-            SettingRow("Sortie audio (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
+            SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
                 store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
                 changed()
             }

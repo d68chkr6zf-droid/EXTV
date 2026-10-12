@@ -62,5 +62,10 @@ dependencies {
     // Moteur de lecture VLC (tous codecs, HLS, MPEG-TS, sous-titres, pistes audio)
     implementation("org.videolan.android:libvlc-all:3.6.5")
 
+    // Lecteur natif Android (ExoPlayer / Media3), au choix dans les paramètres
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+
     testImplementation("junit:junit:4.13.2")
 }

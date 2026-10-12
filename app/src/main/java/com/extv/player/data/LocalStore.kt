@@ -114,8 +114,13 @@ class LocalStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean("hw", value).apply()
 
     var networkCaching: Int
-        get() = prefs.getInt("caching", 3000)
+        get() = prefs.getInt("caching", 20000)
         set(value) = prefs.edit().putInt("caching", value).apply()
+
+    /** Moteur de lecture plein écran : "vlc" (par défaut) ou "native" (lecteur Android, ExoPlayer). */
+    var playerEngine: String
+        get() = prefs.getString("engine", "vlc") ?: "vlc"
+        set(value) = prefs.edit().putString("engine", value).apply()
 
     /** Sortie audio libVLC : "android_audiotrack" (par défaut) ou "opensles" (si pas de son sur certains contenus). */
     var audioOutput: String

@@ -42,5 +42,11 @@
             android:exported="false"
             android:screenOrientation="fullSensor"
             android:theme="@style/Theme.EXTV.Fullscreen" />
+        <activity
+            android:name=".player.NativePlayerActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.EXTV.Fullscreen" />
     </application>
 </manifest>
