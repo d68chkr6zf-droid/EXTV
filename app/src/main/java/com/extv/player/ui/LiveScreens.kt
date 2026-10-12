@@ -59,6 +59,23 @@ import com.extv.player.player.PlayQueue
 
 fun LiveChannel.toPlayItem() = PlayItem(streamUrl, name, historyType = ContentType.LIVE, historyId = id)
 
+/** Logo de la chaîne, ou ses initiales si le fournisseur n'en donne pas. */
+@Composable
+fun ChannelLogo(ch: LiveChannel, modifier: Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (ch.logo.isNullOrBlank()) {
+            Text(
+                ch.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase(),
+                fontWeight = FontWeight.Black,
+                color = C.Accent,
+                fontSize = 15.sp,
+            )
+        } else {
+            AsyncImage(model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
 private fun programFraction(p: EpgProgram, now: Long): Float =
     ((now - p.start).toFloat() / (p.end - p.start).coerceAtLeast(1)).coerceIn(0f, 1f)
 
@@ -161,7 +178,7 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
     val repo = App.instance.repository() ?: return
     val isFav = remember(ch.id, favVersion) { App.instance.store.isFavorite(Favorite.keyOf(ContentType.LIVE, ch.id)) }
     val now = rememberNow(60_000)
-    val programs by produceState<List<EpgProgram>>(emptyList(), ch.id) { value = repo.nowNext(ch) }
+    val programs = rememberLoader(ch.id) { repo.nowNext(ch) }.value.orEmpty()
     val current = programs.firstOrNull { now in it.start until it.end }
     FocusTile(
         onClick = onClick,
@@ -174,7 +191,7 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
     ) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(64.dp, 42.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2A2630)), contentAlignment = Alignment.Center) {
-                AsyncImage(model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(4.dp))
+                ChannelLogo(ch, Modifier.fillMaxSize().padding(4.dp))
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -201,13 +218,14 @@ private fun ChannelPanel(
 ) {
     val repo = App.instance.repository() ?: return
     val now = rememberNow()
-    val epg by produceState<List<EpgProgram>?>(null, channel?.id) {
-        value = null
-        if (channel != null) {
+    val epg = rememberLoader(channel?.id) {
+        if (channel == null) {
+            emptyList()
+        } else {
             kotlinx.coroutines.delay(250) // évite une requête par chaîne pendant le défilement rapide
-            value = runCatching { repo.epg(channel, 8) }.getOrDefault(emptyList())
+            runCatching { repo.epg(channel, 8) }.getOrDefault(emptyList())
         }
-    }
+    }.value
     Column(modifier) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))) {
             VlcPreview(previewUrl, muted, Modifier.fillMaxSize())
@@ -299,12 +317,12 @@ fun GuideScreen() {
 private fun GuideRow(ch: LiveChannel, wide: Boolean, onClick: () -> Unit) {
     val repo = App.instance.repository() ?: return
     val now = rememberNow(60_000)
-    val programs by produceState<List<EpgProgram>>(emptyList(), ch.id) { value = repo.nowNext(ch) }
+    val programs = rememberLoader(ch.id) { repo.nowNext(ch) }.value.orEmpty()
     val current = programs.firstOrNull { now in it.start until it.end }
     val next = programs.firstOrNull { it.start >= (current?.end ?: now) }
     FocusTile(onClick = onClick, modifier = Modifier.fillMaxWidth(), normalColor = C.Surface, focusScale = 1.01f) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(52.dp, 36.dp))
+            ChannelLogo(ch, Modifier.size(52.dp, 36.dp))
             Text(
                 ch.name,
                 Modifier.width(if (wide) 190.dp else 110.dp).padding(horizontal = 10.dp),
@@ -397,7 +415,7 @@ fun ReplayScreen(onChannel: (LiveChannel) -> Unit) {
                             normalColor = C.Surface,
                         ) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                AsyncImage(model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(60.dp, 40.dp))
+                                ChannelLogo(ch, Modifier.size(60.dp, 40.dp))
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                                     if (ch.archiveDays > 0) Text("${ch.archiveDays} jours de replay", color = C.TextDim, fontSize = 12.sp)

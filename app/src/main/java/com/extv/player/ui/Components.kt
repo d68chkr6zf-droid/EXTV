@@ -480,6 +480,11 @@ class Loader<T>(val state: Load<T>, val retry: () -> Unit) {
 
 @Composable
 fun <T> rememberLoader(vararg keys: Any?, block: suspend () -> T): Loader<T> {
+    if (androidx.compose.ui.platform.LocalInspectionMode.current) {
+        // Captures d'écran (données fictives) : chargement immédiat.
+        val result = remember(*keys) { runCatching { kotlinx.coroutines.runBlocking { block() } } }
+        return Loader(result.fold({ Load.Ok(it) }, { Load.Err(it) })) {}
+    }
     var attempt by remember { mutableIntStateOf(0) }
     val currentBlock by rememberUpdatedState(block)
     val state: State<Load<T>> = produceState<Load<T>>(Load.Loading, *keys, attempt) {
