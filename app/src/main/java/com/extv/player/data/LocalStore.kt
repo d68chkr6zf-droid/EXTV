@@ -102,6 +102,11 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getInt("caching", 3000)
         set(value) = prefs.edit().putInt("caching", value).apply()
 
+    /** Sortie audio libVLC : "android_audiotrack" (par défaut) ou "opensles" (si pas de son sur certains contenus). */
+    var audioOutput: String
+        get() = prefs.getString("aout", "android_audiotrack") ?: "android_audiotrack"
+        set(value) = prefs.edit().putString("aout", value).apply()
+
     /** Extension des flux live Xtream : "ts" ou "m3u8". */
     var liveFormat: String
         get() = prefs.getString("liveFormat", "ts") ?: "ts"

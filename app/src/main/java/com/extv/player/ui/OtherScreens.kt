@@ -227,6 +227,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 store.hwDecoding = !store.hwDecoding
                 changed()
             }
+            SettingRow("Sortie audio (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
+                store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
+                changed()
+            }
             SettingRow("Mémoire tampon réseau", "${store.networkCaching} ms") {
                 val values = LocalStore.CACHING_VALUES
                 store.networkCaching = values[(values.indexOf(store.networkCaching) + 1).mod(values.size)]

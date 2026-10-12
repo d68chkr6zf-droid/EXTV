@@ -122,6 +122,7 @@ class PlayerActivity : ComponentActivity() {
             "--http-reconnect",
             "--audio-time-stretch",
             // Flux en direct : ne pas jeter d'images quand l'horloge du serveur dérive (saccades).
+            "--aout=${store.audioOutput}",
             "--clock-jitter=0",
             "--clock-synchro=0",
             "-v",
@@ -205,6 +206,11 @@ class PlayerActivity : ComponentActivity() {
                     mediaPlayer.setTime(pendingSeek)
                     pendingSeek = 0
                 }
+                handler.postDelayed(ensureAudio, 1500)
+            }
+            MediaPlayer.Event.ESAdded -> {
+                handler.removeCallbacks(ensureAudio)
+                handler.postDelayed(ensureAudio, 800)
             }
             MediaPlayer.Event.Paused, MediaPlayer.Event.Stopped -> isPlaying = false
             MediaPlayer.Event.Buffering -> {
@@ -220,6 +226,19 @@ class PlayerActivity : ComponentActivity() {
                 if (live) handler.postDelayed(retryLive, 5000)
             }
         }
+    }
+
+    /**
+     * Certains fichiers (séries surtout) démarrent avec la piste audio désactivée ou sur une piste
+     * illisible : on active la première piste audio disponible.
+     */
+    private val ensureAudio = Runnable {
+        if (!::mediaPlayer.isInitialized) return@Runnable
+        val tracks = mediaPlayer.audioTracks?.filter { it.id >= 0 }.orEmpty()
+        if (tracks.isNotEmpty() && tracks.none { it.id == mediaPlayer.audioTrack }) {
+            mediaPlayer.setAudioTrack(tracks.first().id)
+        }
+        if (mediaPlayer.volume <= 0) mediaPlayer.setVolume(100)
     }
 
     private fun onEnd() {
