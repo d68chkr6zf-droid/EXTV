@@ -16,7 +16,7 @@ import java.io.File
 /**
  * Sauvegarde des favoris dans la mémoire interne du boîtier, pour les retrouver après une réinstallation.
  *
- * Deux copies : un fichier JSON dans Download/EXTV, et une image dans Pictures/EXTV qui contient les
+ * Deux copies : un fichier JSON dans Download/EXTV, et une image dans DCIM/EXTV qui contient les
  * mêmes données. Après une réinstallation, Android n'autorise plus l'appli à relire son fichier JSON
  * sans passer par un sélecteur de fichiers (absent sur certaines TV) ; l'image, elle, se relit
  * avec la simple autorisation d'accès aux photos.
@@ -70,7 +70,7 @@ object FavoritesBackup {
                 collection,
                 arrayOf(MediaStore.MediaColumns._ID),
                 "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
-                arrayOf(IMAGE_NAME, "${Environment.DIRECTORY_PICTURES}/$FOLDER/"),
+                arrayOf(IMAGE_NAME, "${Environment.DIRECTORY_DCIM}/$FOLDER/"),
                 null,
             )?.use { c -> if (c.moveToFirst()) ContentUris.withAppendedId(collection, c.getLong(0)) else null }
             // Une image laissée par une installation précédente n'est plus modifiable : on en crée une nouvelle.
@@ -83,14 +83,14 @@ object FavoritesBackup {
                     ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, IMAGE_NAME)
                         put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$FOLDER/")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/$FOLDER/")
                     },
                 ) ?: error("Impossible de créer la copie de sauvegarde")
                 resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Impossible d'écrire la copie de sauvegarde")
             }
         } else {
             @Suppress("DEPRECATION")
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), FOLDER)
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), FOLDER)
             dir.mkdirs()
             File(dir, IMAGE_NAME).writeBytes(bytes)
         }
@@ -113,8 +113,10 @@ object FavoritesBackup {
             }
         } else {
             @Suppress("DEPRECATION")
-            val file = File(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), FOLDER), IMAGE_NAME)
-            if (file.exists()) file.readBytes() else null
+            // DCIM/EXTV, ou Pictures/EXTV pour les sauvegardes des versions précédentes.
+            listOf(Environment.DIRECTORY_DCIM, Environment.DIRECTORY_PICTURES)
+                .map { File(File(Environment.getExternalStoragePublicDirectory(it), FOLDER), IMAGE_NAME) }
+                .firstOrNull { it.exists() }?.readBytes()
         }
         data ?: return null
         val at = indexOf(data, MARKER)
