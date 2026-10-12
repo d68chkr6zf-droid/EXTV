@@ -16,13 +16,19 @@ Fonctions inspirées des lecteurs IPTV du marché, avec une interface et une mar
 | **Zapping** dans le lecteur (▲ ▼, CH+ / CH-) | ✅ |
 | **Films** : catégories, affiches, fiche (résumé, genre, durée, casting), reprise de lecture | ✅ |
 | **Séries** : saisons, épisodes, enchaînement automatique, reprise par épisode | ✅ |
-| **Rattrapage (catch-up)** : Xtream `timeshift` et M3U `catchup-source` / `shift` | ✅ |
+| **Replay (catch-up)** : Xtream `timeshift` et M3U `catchup-source` / `shift` | ✅ |
 | **Favoris** (chaînes, films, séries) | ✅ |
 | **Recherche** globale (sans accents, insensible à la casse) | ✅ |
 | **Contrôle parental** : code PIN, verrouillage par catégorie, verrouillage auto des catégories adultes | ✅ |
 | **Lecteur VLC** : décodage matériel, mémoire tampon réglable, pistes audio, sous-titres, format d'image, User-Agent | ✅ |
 | Navigation entière à la **télécommande** (D-pad) | ✅ |
-| Multi-écran, enregistrement, lecteur externe, mise à jour du guide en tâche de fond | À faire |
+| Interface **cinéma** (noir, velours rouge, or) adaptée **TV, tablette et smartphone** | ✅ |
+| Accueil : tuiles TV en direct / Films / Séries avec date de mise à jour et bouton d'actualisation, expiration de l'abonnement | ✅ |
+| TV en direct : catégories avec compteurs, Favoris, Historique, programme en cours, **aperçu vidéo intégré** | ✅ |
+| Films / Séries : Récemment regardé, Récemment ajouté, notes sur les affiches, recherche dans les catégories | ✅ |
+| **Guide TV** (programme en cours et suivant), **Replay** par catégorie, **Multi-écrans** (2 ou 4 chaînes) | ✅ |
+| Appui long sur une chaîne / affiche : ajouter ou retirer des favoris | ✅ |
+| Enregistrement, lecteur externe, mise à jour du guide en tâche de fond | À faire |
 
 ## Serveur par défaut
 L'écran de connexion propose `http://718e.dataxtm.com` comme serveur Xtream (champ modifiable). Pour le changer, modifier `DEFAULT_SERVER` dans `app/build.gradle.kts`. Aucun identifiant n'est intégré dans l'application.
