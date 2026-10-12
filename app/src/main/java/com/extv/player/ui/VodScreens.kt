@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import coil.compose.AsyncImage
 import com.extv.player.App
 import com.extv.player.data.Category
+import kotlinx.coroutines.async
 import com.extv.player.data.normalized
 import com.extv.player.data.ContentType
 import com.extv.player.data.Favorite
@@ -113,6 +114,13 @@ private fun <T> CatalogScreen(
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
     var query by remember { mutableStateOf("") }
+    // Index de recherche (noms normalisés) préparé une seule fois, en arrière-plan, dès l'ouverture de l'écran.
+    val searchIndex = remember {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+            loadItems(Category.ALL).map { it to name(it).normalized() }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { searchIndex.start() } }
     val searchHint = "Rechercher ${if (title == "Séries") "une série" else "un film"}"
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
@@ -127,10 +135,10 @@ private fun <T> CatalogScreen(
                 if (q.isEmpty()) {
                     category?.let { loadItems(it.id) }.orEmpty()
                 } else {
-                    kotlinx.coroutines.delay(300)
-                    val all = loadItems(Category.ALL)
+                    kotlinx.coroutines.delay(150)
+                    val index = searchIndex.await()
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                        all.filter { name(it).normalized().contains(q) }
+                        index.filter { it.second.contains(q) }.map { it.first }
                     }
                 }
             }

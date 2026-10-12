@@ -76,8 +76,13 @@ abstract class BaseRepository : IptvRepository {
     }
 }
 
-fun String.normalized(): String =
-    Normalizer.normalize(this, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase()
+private val DIACRITICS = Regex("\\p{Mn}+")
+
+/** Minuscules sans accents, pour comparer des noms. Rapide pour les textes sans accents (le cas courant). */
+fun String.normalized(): String {
+    if (all { it.code < 128 }) return lowercase()
+    return DIACRITICS.replace(Normalizer.normalize(this, Normalizer.Form.NFD), "").lowercase()
+}
 
 /** Identifiants des catégories actuellement verrouillées par le contrôle parental. */
 suspend fun IptvRepository.lockedCategoryIds(type: ContentType): Set<String> {
