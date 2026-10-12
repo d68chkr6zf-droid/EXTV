@@ -2,6 +2,7 @@ package com.extv.player
 
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.ComposeView
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import com.android.resources.Density
@@ -48,7 +49,9 @@ class ScreenshotTest {
 
     private fun shoot(name: String, device: DeviceConfig, content: @Composable () -> Unit) {
         paparazzi.unsafeUpdateConfig(deviceConfig = device)
-        paparazzi.snapshot(name) { ExtvTheme { content() } }
+        // Rendu après un court délai pour laisser les données (fictives) se charger.
+        val view = ComposeView(paparazzi.context).apply { setContent { ExtvTheme { content() } } }
+        paparazzi.snapshot(view, name, offsetMillis = 3_000L)
     }
 
     @Test fun tvHome() = shoot("tv_1_accueil", TV) { HomeScreen(onNavigate = {}, onSwitchProfile = {}) }

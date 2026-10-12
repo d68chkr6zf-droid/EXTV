@@ -98,10 +98,9 @@ fun LiveScreen() {
         }
         LoadView(entries) { list ->
             LaunchedEffect(Unit) {
-                if (selected == null) selected = list.getOrNull(3)?.category ?: list.firstOrNull()?.category
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected
+            val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
             val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
 
             val channelList: @Composable (Modifier) -> Unit = { m ->
@@ -270,10 +269,9 @@ fun GuideScreen() {
         ScreenTitle("Guide TV")
         LoadView(entries) { list ->
             LaunchedEffect(Unit) {
-                if (selected == null) selected = list.getOrNull(3)?.category ?: list.firstOrNull()?.category
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected
+            val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
             val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
             val grid: @Composable (Modifier) -> Unit = { m ->
                 LoadView(channels, m) { chs ->

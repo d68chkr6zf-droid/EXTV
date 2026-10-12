@@ -115,10 +115,9 @@ private fun <T> CatalogScreen(
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
         LoadView(entries) { list ->
             LaunchedEffect(Unit) {
-                if (selected == null) selected = list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected
+            val category = selected ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
             val items = rememberLoader(category?.id) { category?.let { loadItems(it.id) }.orEmpty() }
 
             val grid: @Composable (Modifier) -> Unit = { m ->
