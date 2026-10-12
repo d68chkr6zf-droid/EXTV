@@ -215,7 +215,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         ScreenTitle("Paramètres")
         key(tick) {
             Section("Compte")
-            InfoRow("Profil", "${profile?.name ?: "-"}  (${if (profile?.type == ProfileType.M3U) "Liste M3U" else "Xtream Codes"})")
+            InfoRow("Compte", profile?.name ?: "-")
             account.value?.let { a ->
                 InfoRow("Statut", a.status ?: "-")
                 a.expDate?.let { InfoRow("Expiration", formatDate(it)) }

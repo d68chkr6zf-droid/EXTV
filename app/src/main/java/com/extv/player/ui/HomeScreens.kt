@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -105,7 +106,6 @@ fun ProfilesScreen(onOpen: () -> Unit, onAdd: () -> Unit) {
                     ) {
                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(p.name.take(1).uppercase(), fontSize = 48.sp, fontWeight = FontWeight.Black, color = C.Accent)
-                            Text(if (p.type == ProfileType.XTREAM) "Xtream" else "M3U", color = C.TextDim, fontSize = 12.sp)
                         }
                     }
                     Text(p.name, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp), maxLines = 1)
@@ -154,46 +154,33 @@ fun ProfilesScreen(onOpen: () -> Unit, onAdd: () -> Unit) {
 fun AddProfileScreen(onDone: () -> Unit) {
     val app = App.instance
     val scope = rememberCoroutineScope()
-    var type by remember { mutableStateOf(ProfileType.XTREAM) }
-    var name by remember { mutableStateOf("") }
-    var server by remember { mutableStateOf(BuildConfig.DEFAULT_SERVER) }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var m3uUrl by remember { mutableStateOf("") }
-    var epgUrl by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
     fun submit() {
-        errorMsg = when {
-            type == ProfileType.XTREAM && (server.isBlank() || username.isBlank() || password.isBlank()) ->
-                "Renseignez l'adresse du serveur, l'identifiant et le mot de passe."
-            type == ProfileType.M3U && m3uUrl.isBlank() -> "Renseignez l'URL de la liste M3U."
-            else -> null
-        }
+        errorMsg = if (username.isBlank() || password.isBlank()) "Renseignez le nom d'utilisateur et le mot de passe." else null
         if (errorMsg != null) return
+        // Le serveur est fixé dans l'application et n'est jamais affiché.
         val profile = Profile(
             id = UUID.randomUUID().toString(),
-            name = name.trim().ifBlank { if (type == ProfileType.XTREAM) username.trim() else "Ma liste" },
-            type = type,
-            server = server.trim(),
+            name = username.trim(),
+            type = ProfileType.XTREAM,
+            server = BuildConfig.DEFAULT_SERVER,
             username = username.trim(),
             password = password.trim(),
-            m3uUrl = m3uUrl.trim(),
-            epgUrl = epgUrl.trim(),
+            m3uUrl = "",
+            epgUrl = "",
         )
         busy = true
         scope.launch {
             val result = runCatching {
                 val repo = app.createRepository(profile)
-                if (type == ProfileType.XTREAM) {
-                    val info = repo.accountInfo() ?: throw IllegalStateException("Réponse du serveur non reconnue")
-                    if (!info.authenticated) throw IllegalStateException("Identifiants refusés par le serveur")
-                } else {
-                    repo.categories(ContentType.LIVE)
-                }
+                val info = repo.accountInfo() ?: throw IllegalStateException("Connexion impossible, réessayez plus tard")
+                if (!info.authenticated) throw IllegalStateException("Nom d'utilisateur ou mot de passe incorrect")
             }
             busy = false
             result.onSuccess {
@@ -201,7 +188,12 @@ fun AddProfileScreen(onDone: () -> Unit) {
                 app.store.activeProfileId = profile.id
                 app.resetRepository()
                 onDone()
-            }.onFailure { errorMsg = it.message ?: it.toString() }
+            }.onFailure {
+                // Ne jamais afficher l'adresse du serveur dans un message d'erreur.
+                val host = BuildConfig.DEFAULT_SERVER.substringAfter("://")
+                errorMsg = it.message?.takeUnless { m -> m.contains(host, ignoreCase = true) || m.contains("http", ignoreCase = true) }
+                    ?: "Connexion impossible, réessayez plus tard"
+            }
         }
     }
 
@@ -211,24 +203,9 @@ fun AddProfileScreen(onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ExtvLogo(34.sp)
-            Text("Ajouter un compte", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FocusTile(onClick = { type = ProfileType.XTREAM }, selected = type == ProfileType.XTREAM, focusRequester = first, shape = RoundedCornerShape(20.dp)) {
-                    Text("Xtream Codes", Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
-                }
-                FocusTile(onClick = { type = ProfileType.M3U }, selected = type == ProfileType.M3U, shape = RoundedCornerShape(20.dp)) {
-                    Text("Liste M3U", Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
-                }
-            }
-            Field("Nom du profil (facultatif)", name) { name = it }
-            if (type == ProfileType.XTREAM) {
-                Field("Adresse du serveur", server, KeyboardType.Uri) { server = it }
-                Field("Nom d'utilisateur", username) { username = it }
-                Field("Mot de passe", password, KeyboardType.Password, secret = true) { password = it }
-            } else {
-                Field("URL de la liste M3U", m3uUrl, KeyboardType.Uri) { m3uUrl = it }
-                Field("URL du guide XMLTV (facultatif)", epgUrl, KeyboardType.Uri) { epgUrl = it }
-            }
+            Text("Connexion", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+            Field("Nom d'utilisateur", username, focusRequester = first) { username = it }
+            Field("Mot de passe", password, KeyboardType.Password, secret = true) { password = it }
             errorMsg?.let { Text(it, color = C.Error) }
             ActionButton(if (busy) "Connexion…" else "Se connecter", primary = true) { if (!busy) submit() }
             Text("Utilisez uniquement des abonnements et contenus dont vous détenez les droits.", color = C.TextDim, fontSize = 12.sp)
@@ -242,6 +219,7 @@ private fun Field(
     value: String,
     keyboard: KeyboardType = KeyboardType.Text,
     secret: Boolean = false,
+    focusRequester: FocusRequester? = null,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -249,7 +227,7 @@ private fun Field(
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().let { if (focusRequester != null) it.focusRequester(focusRequester) else it },
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.Accent, focusedLabelColor = C.Accent),
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
