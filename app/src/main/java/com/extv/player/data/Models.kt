@@ -40,6 +40,11 @@ data class Category(val id: String, val name: String, val type: ContentType) {
 
     companion object {
         const val ALL = "__all"
+        const val FAVORITES = "__fav"
+        const val HISTORY = "__hist"
+        const val RECENT = "__new"
+
+        fun isVirtual(id: String) = id.startsWith("__")
     }
 }
 
@@ -70,6 +75,8 @@ data class Movie(
     val year: String? = null,
     val cast: String? = null,
     val director: String? = null,
+    /** Date d'ajout sur le serveur (ms), pour « Récemment ajouté ». */
+    val added: Long = 0,
 )
 
 data class Series(
@@ -79,6 +86,7 @@ data class Series(
     val categoryId: String,
     val plot: String?,
     val rating: String?,
+    val added: Long = 0,
 )
 
 data class Episode(

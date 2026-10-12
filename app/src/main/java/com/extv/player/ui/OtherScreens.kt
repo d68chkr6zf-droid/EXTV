@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -85,7 +86,7 @@ fun FavoritesScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(40.dp).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
         ScreenTitle("Favoris")
         message?.let { Text(it, color = C.Error, modifier = Modifier.padding(bottom = 12.dp)) }
         if (favorites.isEmpty()) {
@@ -133,7 +134,7 @@ fun SearchScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().padding(40.dp)) {
+    Column(Modifier.fillMaxSize().padding(screenPadding())) {
         ScreenTitle("Recherche")
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -141,7 +142,7 @@ fun SearchScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
                 onValueChange = { query = it },
                 label = { Text("Chaîne, film ou série") },
                 singleLine = true,
-                modifier = Modifier.width(520.dp).focusRequester(field),
+                modifier = Modifier.weight(1f).widthIn(max = 520.dp).focusRequester(field),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submitted = query.trim() }),
             )
@@ -171,13 +172,13 @@ fun SearchScreen(openMovie: (Movie) -> Unit, openSeries: (Series) -> Unit) {
                     if (r.movies.isNotEmpty()) {
                         ResultTitle("Films (${r.movies.size})")
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            items(r.movies) { m -> PosterCard(m.name, m.poster, onClick = { openMovie(m) }, modifier = Modifier.width(150.dp)) }
+                            items(r.movies) { m -> PosterCard(m.name, m.poster, onClick = { openMovie(m) }, modifier = Modifier.width(140.dp), rating = m.rating) }
                         }
                     }
                     if (r.series.isNotEmpty()) {
                         ResultTitle("Séries (${r.series.size})")
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            items(r.series) { s -> PosterCard(s.name, s.cover, onClick = { openSeries(s) }, modifier = Modifier.width(150.dp)) }
+                            items(r.series) { s -> PosterCard(s.name, s.cover, onClick = { openSeries(s) }, modifier = Modifier.width(140.dp), rating = s.rating) }
                         }
                     }
                 }
@@ -210,7 +211,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         tick++
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 80.dp, vertical = 40.dp).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
         ScreenTitle("Paramètres")
         key(tick) {
             Section("Compte")
@@ -321,7 +322,7 @@ fun LockedCategoriesScreen() {
     var locked by remember { mutableStateOf(app.store.lockedCategories()) }
     val first = remember { FocusRequester() }
 
-    Column(Modifier.fillMaxSize().padding(40.dp)) {
+    Column(Modifier.fillMaxSize().padding(screenPadding())) {
         ScreenTitle("Catégories verrouillées")
         Text("Les catégories cochées demanderont le code PIN.", color = C.TextDim, modifier = Modifier.padding(bottom = 12.dp))
         LoadView(all) { list ->

@@ -2,6 +2,7 @@ package com.extv.player.player
 
 import android.content.Context
 import android.content.Intent
+import com.extv.player.data.ContentType
 
 /**
  * @param startAtMs null = reprendre à la position enregistrée (si resumeKey), 0 = depuis le début.
@@ -11,6 +12,9 @@ data class PlayItem(
     val title: String,
     val resumeKey: String? = null,
     val startAtMs: Long? = null,
+    /** Pour l'historique « Récemment regardé ». */
+    val historyType: ContentType? = null,
+    val historyId: String? = null,
 )
 
 /**

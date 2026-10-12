@@ -87,7 +87,10 @@ class XtreamRepository(
                     archiveDays = o.str("tv_archive_duration")?.toIntOrNull() ?: 0,
                     num = o.str("num")?.toIntOrNull() ?: (i + 1),
                 )
-            }.also { liveCache = it }
+            }.also {
+                liveCache = it
+                loadTimes[ContentType.LIVE] = System.currentTimeMillis()
+            }
         }
         return if (categoryId == null) all else all.filter { it.categoryId == categoryId }
     }
@@ -104,8 +107,12 @@ class XtreamRepository(
                     categoryId = o.str("category_id") ?: "",
                     streamUrl = "$base/movie/$user/$pass/$id.$ext",
                     rating = o.str("rating")?.takeIf { it != "0" },
+                    added = (o.str("added")?.toLongOrNull() ?: 0) * 1000,
                 )
-            }.also { movieCache = it }
+            }.also {
+                movieCache = it
+                loadTimes[ContentType.MOVIE] = System.currentTimeMillis()
+            }
         }
         return if (categoryId == null) all else all.filter { it.categoryId == categoryId }
     }
@@ -120,8 +127,12 @@ class XtreamRepository(
                     categoryId = o.str("category_id") ?: "",
                     plot = o.str("plot"),
                     rating = o.str("rating")?.takeIf { it != "0" },
+                    added = (o.str("last_modified")?.toLongOrNull() ?: 0) * 1000,
                 )
-            }.also { seriesCache = it }
+            }.also {
+                seriesCache = it
+                loadTimes[ContentType.SERIES] = System.currentTimeMillis()
+            }
         }
         return if (categoryId == null) all else all.filter { it.categoryId == categoryId }
     }
@@ -218,6 +229,19 @@ class XtreamRepository(
             raw.substring(0, 10) + ":" + raw.substring(11, 16).replace(':', '-')
         } ?: SimpleDateFormat("yyyy-MM-dd:HH-mm", Locale.US).format(Date(program.start))
         return "$base/timeshift/$user/$pass/$minutes/$start/${channel.id}.ts"
+    }
+
+    override suspend fun refresh(type: ContentType) {
+        mutex.withLock {
+            categoryCache.remove(type)
+            loadTimes.remove(type)
+            when (type) {
+                ContentType.LIVE -> liveCache = null
+                ContentType.MOVIE -> movieCache = null
+                ContentType.SERIES -> seriesCache = null
+            }
+            Unit
+        }
     }
 
     override suspend fun accountInfo(): AccountInfo? {

@@ -23,7 +23,9 @@ object Routes {
     const val ADD_PROFILE = "addProfile"
     const val HOME = "home"
     const val LIVE = "live"
-    const val CATCHUP_CHANNELS = "catchupChannels"
+    const val REPLAY = "replay"
+    const val GUIDE = "guide"
+    const val MULTI = "multi"
     const val CATCHUP = "catchup"
     const val MOVIES = "movies"
     const val MOVIE = "movie"
@@ -68,8 +70,10 @@ fun AppNav() {
         composable(Routes.HOME) {
             HomeScreen(onNavigate = { nav.navigate(it) }, onSwitchProfile = switchProfile)
         }
-        composable(Routes.LIVE) { LiveScreen(archiveOnly = false, onCatchup = openCatchup) }
-        composable(Routes.CATCHUP_CHANNELS) { LiveScreen(archiveOnly = true, onCatchup = openCatchup) }
+        composable(Routes.LIVE) { LiveScreen() }
+        composable(Routes.REPLAY) { ReplayScreen(onChannel = openCatchup) }
+        composable(Routes.GUIDE) { GuideScreen() }
+        composable(Routes.MULTI) { MultiScreen() }
         composable(Routes.CATCHUP) { CatchupScreen() }
         composable(Routes.MOVIES) { MoviesScreen(onOpen = openMovie) }
         composable(Routes.MOVIE) { MovieDetailScreen() }

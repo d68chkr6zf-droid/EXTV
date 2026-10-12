@@ -49,6 +49,20 @@ class LocalStore(context: Context) {
         return !exists
     }
 
+    // --- Historique (récemment regardé) ------------------------------------------------------
+
+    fun history(type: ContentType): List<String> {
+        val raw = prefs.getString(scoped("hist_${type.name}"), null) ?: return emptyList()
+        return runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+    }
+
+    fun addHistory(type: ContentType, id: String) {
+        val list = (listOf(id) + history(type).filterNot { it == id }).take(60)
+        val a = JSONArray()
+        list.forEach { a.put(it) }
+        prefs.edit().putString(scoped("hist_${type.name}"), a.toString()).apply()
+    }
+
     // --- Reprise de lecture ------------------------------------------------------------------
 
     fun position(key: String): Long = readObject(scoped("pos")).optLong(key, 0L)

@@ -9,6 +9,7 @@ import com.extv.player.data.Profile
 import com.extv.player.data.ProfileType
 import com.extv.player.data.XtreamRepository
 import okhttp3.OkHttpClient
+import org.videolan.libvlc.LibVLC
 import java.util.concurrent.TimeUnit
 
 class App : Application() {
@@ -29,6 +30,11 @@ class App : Application() {
     }
 
     private var current: Pair<String, IptvRepository>? = null
+
+    /** Moteur VLC partagé par les aperçus intégrés (TV en direct, multi-écrans). */
+    val libVlc: LibVLC by lazy {
+        LibVLC(this, arrayListOf("--network-caching=1500", "--http-reconnect"))
+    }
 
     override fun onCreate() {
         super.onCreate()

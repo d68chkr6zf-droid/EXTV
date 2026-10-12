@@ -34,7 +34,21 @@ class M3uRepository(
     private val epgMutex = Mutex()
     private var epgData: Map<String, List<EpgProgram>>? = null
 
-    private suspend fun data(): Data = mutex.withLock { data ?: load().also { data = it } }
+    private suspend fun data(): Data = mutex.withLock {
+        data ?: load().also {
+            data = it
+            val now = System.currentTimeMillis()
+            ContentType.values().forEach { t -> loadTimes[t] = now }
+        }
+    }
+
+    override suspend fun refresh(type: ContentType) {
+        mutex.withLock {
+            data = null
+            loadTimes.clear()
+        }
+        epgMutex.withLock { epgData = null }
+    }
 
     private suspend fun load(): Data = withContext(Dispatchers.IO) {
         val playlist = http.newCall(Request.Builder().url(profile.m3uUrl.trim()).build()).execute().use { r ->

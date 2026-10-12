@@ -9,6 +9,14 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -94,6 +102,11 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
 
         items = PlayQueue.items.toMutableList()
         if (items.isEmpty()) {
@@ -173,6 +186,8 @@ class PlayerActivity : ComponentActivity() {
         }
         // Après un retour en arrière-plan, on reprend toujours à la position enregistrée.
         items[index] = item.copy(startAtMs = null)
+
+        if (item.historyType != null && item.historyId != null) store.addHistory(item.historyType, item.historyId)
 
         mediaPlayer.play()
         showOverlay()
@@ -302,7 +317,12 @@ class PlayerActivity : ComponentActivity() {
     @Composable
     private fun Overlay() {
         val item = items.getOrNull(index)
-        Box(Modifier.fillMaxSize()) {
+        val noRipple = remember { MutableInteractionSource() }
+        Box(
+            Modifier.fillMaxSize().clickable(interactionSource = noRipple, indication = null) {
+                if (overlayVisible) overlayVisible = false else showOverlay()
+            },
+        ) {
             if (isBuffering && errorText == null) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = C.Accent)
@@ -328,6 +348,20 @@ class PlayerActivity : ComponentActivity() {
                     Text(item?.title ?: "", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     if (live) {
                         Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  MENU : options", color = C.TextDim, fontSize = 14.sp)
+                    }
+                }
+            }
+            // Commandes tactiles (smartphone / tablette) ; à la télécommande, les touches suffisent.
+            AnimatedVisibility(overlayVisible, Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (items.size > 1) RoundControl("⏮", 52) { zap(-1) }
+                    if (!live) RoundControl("⏪", 52) { seekBy(-10_000) }
+                    RoundControl(if (isPlaying) "⏸" else "▶", 72) { togglePause() }
+                    if (!live) RoundControl("⏩", 52) { seekBy(10_000) }
+                    if (items.size > 1) RoundControl("⏭", 52) { zap(1) }
+                    RoundControl("⚙", 52) {
+                        handler.removeCallbacks(hideOverlay)
+                        menuVisible = true
                     }
                 }
             }
@@ -357,6 +391,16 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             if (menuVisible) OptionsMenu(Modifier.align(Alignment.CenterEnd))
+        }
+    }
+
+    @Composable
+    private fun RoundControl(symbol: String, size: Int, onClick: () -> Unit) {
+        Box(
+            Modifier.size(size.dp).clip(CircleShape).background(Color(0x99000000)).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(symbol, color = Color.White, fontSize = (size / 2.4).sp)
         }
     }
 
