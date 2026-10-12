@@ -156,7 +156,7 @@ class LocalStore(private val prefs: SharedPreferences) {
             "Mozilla/5.0 (Linux; Android 12; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
             "okhttp/4.12.0",
         )
-        val CACHING_VALUES = listOf(1000, 2000, 3000, 5000, 8000, 10000, 12000, 16000)
+        val CACHING_VALUES = listOf(1000, 2000, 3000, 5000, 8000, 10000, 12000, 16000, 20000, 30000)
     }
 }
 
