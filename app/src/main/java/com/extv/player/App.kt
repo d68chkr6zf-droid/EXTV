@@ -30,6 +30,7 @@ class App : Application() {
     }
 
     private var current: Pair<String, IptvRepository>? = null
+    private var repositoryOverride: IptvRepository? = null
 
     /** Moteur VLC partagé par les aperçus intégrés (TV en direct, multi-écrans). */
     val libVlc: LibVLC by lazy {
@@ -51,6 +52,7 @@ class App : Application() {
     /** Source du profil actif (gardée en mémoire tant que le profil ne change pas). */
     @Synchronized
     fun repository(): IptvRepository? {
+        repositoryOverride?.let { return it }
         val p = store.activeProfile() ?: return null
         current?.let { if (it.first == p.id) return it.second }
         return createRepository(p).also { current = p.id to it }
@@ -65,5 +67,14 @@ class App : Application() {
     companion object {
         lateinit var instance: App
             private set
+
+        /** Pour les captures d'écran automatiques : données d'exemple, sans réseau. */
+        fun installForScreenshots(store: LocalStore, repository: IptvRepository) {
+            instance = App().apply {
+                this.store = store
+                parental = Parental(store)
+                repositoryOverride = repository
+            }
+        }
     }
 }

@@ -263,8 +263,8 @@ fun PosterCard(
         normalColor = C.Surface2,
         focusedColor = C.Surface2,
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(aspect)) {
-            Text(title.take(1).uppercase(), Modifier.align(Alignment.Center), fontSize = 36.sp, color = C.TextDim)
+        Box(Modifier.fillMaxWidth().aspectRatio(aspect).background(Brush.linearGradient(placeholderGradient(title)))) {
+            Text(title.take(1).uppercase(), Modifier.align(Alignment.Center), fontSize = 40.sp, fontWeight = FontWeight.Black, color = Color(0x55FFFFFF))
             AsyncImage(
                 model = image,
                 contentDescription = title,
@@ -292,6 +292,17 @@ fun PosterCard(
         }
     }
 }
+
+/** Dégradé de remplacement quand l'affiche est absente (couleur stable par titre). */
+private val placeholderPalettes = listOf(
+    listOf(Color(0xFF5E0718), Color(0xFF1A0B10)),
+    listOf(Color(0xFF6B4A12), Color(0xFF1C130A)),
+    listOf(Color(0xFF2A0F52), Color(0xFF0E0A1C)),
+    listOf(Color(0xFF0E3A4A), Color(0xFF081418)),
+    listOf(Color(0xFF3A3A3A), Color(0xFF111111)),
+)
+
+fun placeholderGradient(seed: String): List<Color> = placeholderPalettes[(seed.hashCode() and 0x7fffffff) % placeholderPalettes.size]
 
 fun formatRating(raw: String?): String? {
     val v = raw?.replace(',', '.')?.toDoubleOrNull() ?: return null
@@ -414,6 +425,13 @@ fun CategoryChips(entries: List<CategoryEntry>, selectedId: String?, onSelect: (
 /** Petit lecteur VLC intégré à un écran (aperçu de chaîne, multi-écrans). url = null : arrêt. */
 @Composable
 fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier) {
+    if (androidx.compose.ui.platform.LocalInspectionMode.current) {
+        // Rendu des captures d'écran : pas de moteur vidéo, une image de remplacement.
+        Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF2B1A3A), Color(0xFF0E2236), Color(0xFF3A1A12))))) {
+            if (url != null) Text("▶", Modifier.align(Alignment.Center), fontSize = 40.sp, color = Color(0xCCFFFFFF))
+        }
+        return
+    }
     val context = LocalContext.current
     val app = App.instance
     val layout = remember { VLCVideoLayout(context) }

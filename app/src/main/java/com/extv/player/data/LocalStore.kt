@@ -1,6 +1,7 @@
 package com.extv.player.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -8,8 +9,8 @@ import org.json.JSONObject
  * Stockage local simple (SharedPreferences + JSON) : profils, favoris, positions de lecture,
  * contrôle parental et réglages du lecteur. Favoris, positions et verrous sont propres à chaque profil.
  */
-class LocalStore(context: Context) {
-    private val prefs = context.getSharedPreferences("extv", Context.MODE_PRIVATE)
+class LocalStore(private val prefs: SharedPreferences) {
+    constructor(context: Context) : this(context.getSharedPreferences("extv", Context.MODE_PRIVATE))
 
     // --- Profils -----------------------------------------------------------------------------
 

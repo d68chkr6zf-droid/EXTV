@@ -1,0 +1,29 @@
+name: Captures d'écran
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Générer les captures (Paparazzi)
+        run: ./gradlew recordPaparazziDebug --stacktrace
+      - name: Publier les images sur la branche « screenshots »
+        run: |
+          cd app/src/test/snapshots/images
+          git init -q -b screenshots
+          git add .
+          git -c user.name="github-actions" -c user.email="actions@github.com" commit -q -m "Captures ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" screenshots

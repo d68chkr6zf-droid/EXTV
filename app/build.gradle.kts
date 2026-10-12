@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.paparazzi")
 }
 
 android {
@@ -70,4 +71,6 @@ dependencies {
 
     // Moteur de lecture VLC (tous codecs, HLS, MPEG-TS, sous-titres, pistes audio)
     implementation("org.videolan.android:libvlc-all:3.6.5")
+
+    testImplementation("junit:junit:4.13.2")
 }
