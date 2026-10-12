@@ -1,6 +1,11 @@
 package com.extv.player
 
 import android.content.SharedPreferences
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -52,7 +57,11 @@ class ScreenshotTest {
     private fun shoot(name: String, device: DeviceConfig, content: @Composable () -> Unit) {
         paparazzi.unsafeUpdateConfig(deviceConfig = device)
         // Rendu après un court délai pour laisser les données (fictives) se charger.
-        val view = ComposeView(paparazzi.context).apply { setContent { CompositionLocalProvider(LocalInspectionMode provides true) { ExtvTheme { content() } } } }
+        val view = ComposeView(paparazzi.context).apply { setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalActivityResultRegistryOwner provides NoResults) {
+                ExtvTheme { content() }
+            }
+        } }
         paparazzi.snapshot(view, name, offsetMillis = 3_000L)
     }
 
@@ -76,6 +85,13 @@ class ScreenshotTest {
     @Test fun tabletHome() = shoot("tablette_1_accueil", TABLET) { HomeScreen(onNavigate = {}, onSwitchProfile = {}) }
 
     companion object {
+        /** Les écrans qui ouvrent un sélecteur de fichier ont besoin d'un registre, inutile pour les captures. */
+        private val NoResults = object : ActivityResultRegistryOwner {
+            override val activityResultRegistry = object : ActivityResultRegistry() {
+                override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) = Unit
+            }
+        }
+
         val TV = DeviceConfig.PIXEL_5.copy(
             screenWidth = 1920,
             screenHeight = 1080,
