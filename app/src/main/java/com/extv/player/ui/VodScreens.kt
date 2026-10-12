@@ -235,7 +235,7 @@ fun MovieDetailScreen() {
             model = movie.poster,
             contentDescription = movie.name,
             contentScale = ContentScale.Crop,
-            modifier = m.aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(C.Surface),
+            modifier = m.aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(placeholderGradient(movie.name))),
         )
     }
     val info: @Composable (Modifier) -> Unit = { m ->
@@ -310,7 +310,7 @@ fun SeriesDetailScreen() {
                             model = series.cover,
                             contentDescription = series.name,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.width(if (compact) 110.dp else 170.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(C.Surface),
+                            modifier = Modifier.width(if (compact) 110.dp else 170.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(placeholderGradient(series.name))),
                         )
                         Column(Modifier.padding(start = 20.dp)) {
                             Text(series.name, fontSize = if (compact) 22.sp else 32.sp, fontWeight = FontWeight.Black)

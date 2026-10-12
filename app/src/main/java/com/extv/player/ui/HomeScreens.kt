@@ -470,16 +470,23 @@ private fun SmallTile(label: String, icon: Int, modifier: Modifier, onClick: () 
         normalColor = C.Surface2,
         focusedColor = C.SurfaceFocus,
     ) { focused ->
-        Row(Modifier.align(Alignment.Center).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(icon), contentDescription = null, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(26.dp))
-            Text(
-                label.uppercase(),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-                maxLines = 2,
-                modifier = Modifier.padding(start = 10.dp),
-            )
+        if (windowSize() == WindowSize.Compact) {
+            Column(Modifier.align(Alignment.Center).padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(painterResource(icon), contentDescription = null, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(24.dp))
+                Text(label.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+            }
+        } else {
+            Row(Modifier.align(Alignment.Center).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(icon), contentDescription = null, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(26.dp))
+                Text(
+                    label.uppercase(),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp,
+                    maxLines = 2,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            }
         }
     }
 }
