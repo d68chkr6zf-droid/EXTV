@@ -30,6 +30,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import com.extv.player.data.FavoritesBackup
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -299,6 +302,63 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
         SmallTile("Favoris Films & Séries", R.drawable.ic_fav_vod, m) { onNavigate(Routes.FAV_VOD) }
         SmallTile("Replay", R.drawable.ic_replay, m) { onNavigate(Routes.REPLAY) }
     }
+    // --- Sauvegarde / réintégration des favoris sur le boîtier ---
+    val context = LocalContext.current
+    val toast = rememberToast()
+    fun backupFavorites() {
+        runCatching {
+            val count = app.store.favorites().size
+            if (count == 0) {
+                toast("Aucun favori à sauvegarder")
+                return
+            }
+            FavoritesBackup.save(context, app.store.exportFavorites())
+            toast("$count favori(s) sauvegardé(s) dans le boîtier (Download/EXTV)")
+        }.onFailure { toast("Sauvegarde impossible : ${it.message}") }
+    }
+    fun importFrom(json: String?) {
+        if (json == null) {
+            toast("Aucune sauvegarde trouvée")
+            return
+        }
+        runCatching { app.store.importFavorites(json) }
+            .onSuccess { n -> toast(if (n == 0) "Favoris déjà à jour" else "$n favori(s) réintégré(s)") }
+            .onFailure { toast("Fichier de sauvegarde illisible") }
+    }
+    // Après une réinstallation (Android 10+), le fichier n'appartient plus à l'appli : on le fait choisir.
+    val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) importFrom(runCatching { FavoritesBackup.read(context, uri) }.getOrNull()) }
+    fun restoreFavorites() {
+        val json = runCatching { FavoritesBackup.load(context) }.getOrNull()
+        if (json != null) {
+            importFrom(json)
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            toast("Choisissez le fichier ${FavoritesBackup.FILE_NAME} dans Download/EXTV")
+            runCatching { pickBackup.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }
+                .onFailure { toast("Aucune sauvegarde trouvée") }
+        } else {
+            importFrom(null)
+        }
+    }
+    var pendingStorageAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val storagePermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) { granted ->
+        if (granted.values.all { it }) pendingStorageAction?.invoke() else toast("Autorisation de stockage refusée")
+        pendingStorageAction = null
+    }
+    fun withStorage(action: () -> Unit) {
+        val perms = arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        val ok = !FavoritesBackup.needsStoragePermission || perms.all {
+            androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (ok) action() else {
+            pendingStorageAction = action
+            storagePermission.launch(perms)
+        }
+    }
+
     val expiration = account.value?.expDate?.let { "Abonnement valable jusqu'au ${formatLongDate(it)}" }
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
@@ -306,7 +366,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             compact = compact,
             now = now,
             onSearch = { onNavigate(Routes.SEARCH) },
-            onFavorites = { onNavigate(Routes.FAVORITES) },
+            onBackupFavorites = { withStorage(::backupFavorites) },
+            onRestoreFavorites = { withStorage(::restoreFavorites) },
             onProfiles = onSwitchProfile,
             onSettings = { onNavigate(Routes.SETTINGS) },
             onExit = { activity?.finish() },
@@ -352,7 +413,8 @@ private fun TopBar(
     compact: Boolean,
     now: Long,
     onSearch: () -> Unit,
-    onFavorites: () -> Unit,
+    onBackupFavorites: () -> Unit,
+    onRestoreFavorites: () -> Unit,
     onProfiles: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
@@ -382,7 +444,9 @@ private fun TopBar(
         }
         val gap = if (compact) 8.dp else 12.dp
         val btn = if (compact) 40.dp else 46.dp
-        RoundIconButton(Icons.Default.Star, "Favoris", btn, onFavorites)
+        StarArrowButton(up = true, "Sauvegarder les favoris", btn, onBackupFavorites)
+        Spacer(Modifier.width(gap))
+        StarArrowButton(up = false, "Réintégrer les favoris", btn, onRestoreFavorites)
         Spacer(Modifier.width(gap))
         RoundIconButton(Icons.Default.Person, "Profils", btn, onProfiles)
         Spacer(Modifier.width(gap))
@@ -475,6 +539,22 @@ private fun SmallTile(label: String, icon: Int, modifier: Modifier, onClick: () 
                     modifier = Modifier.padding(start = 10.dp),
                 )
             }
+        }
+    }
+}
+
+/** Étoile avec une flèche : vers le haut = sauvegarder les favoris, vers le bas = les réintégrer. */
+@Composable
+private fun StarArrowButton(up: Boolean, description: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    FocusTile(onClick = onClick, modifier = Modifier.size(size), shape = CircleShape, normalColor = C.Surface2, focusScale = 1.12f) { focused ->
+        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Star, contentDescription = description, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(size * 0.42f))
+            Icon(
+                if (up) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = C.Accent,
+                modifier = Modifier.size(size * 0.38f),
+            )
         }
     }
 }

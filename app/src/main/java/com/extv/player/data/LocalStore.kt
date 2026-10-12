@@ -50,6 +50,21 @@ class LocalStore(private val prefs: SharedPreferences) {
         return !exists
     }
 
+    /** Favoris du compte actif au format JSON, pour la sauvegarde sur le boîtier. */
+    fun exportFavorites(): String =
+        JSONObject().put("app", "EXTV").put("version", 1).put("favorites", JSONArray(favorites().map { it.toJson() })).toString(2)
+
+    /** Réintègre des favoris sauvegardés (sans doublons) ; renvoie le nombre de favoris ajoutés. */
+    fun importFavorites(json: String): Int {
+        val array = JSONObject(json).getJSONArray("favorites")
+        val incoming = (0 until array.length()).mapNotNull { i -> runCatching { Favorite.fromJson(array.getJSONObject(i)) }.getOrNull() }
+        val current = favorites()
+        val keys = current.map { it.key }.toHashSet()
+        val added = incoming.filter { keys.add(it.key) }
+        writeArray(scoped("fav"), (current + added).map { it.toJson() })
+        return added.size
+    }
+
     // --- Historique (récemment regardé) ------------------------------------------------------
 
     fun history(type: ContentType): List<String> {
