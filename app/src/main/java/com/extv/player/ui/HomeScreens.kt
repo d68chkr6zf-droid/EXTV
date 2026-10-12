@@ -312,8 +312,10 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
                 toast("Aucun favori à sauvegarder")
                 return
             }
-            FavoritesBackup.save(context, app.store.exportFavorites())
-            toast("$count favori(s) sauvegardé(s) dans le boîtier (Download/EXTV)")
+            val json = app.store.exportFavorites()
+            FavoritesBackup.save(context, json)
+            FavoritesBackup.saveImage(context, json)
+            toast("$count favori(s) sauvegardé(s) dans le boîtier")
         }.onFailure { toast("Sauvegarde impossible : ${it.message}") }
     }
     fun importFrom(json: String?) {
@@ -325,38 +327,49 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             .onSuccess { n -> toast(if (n == 0) "Favoris déjà à jour" else "$n favori(s) réintégré(s)") }
             .onFailure { toast("Fichier de sauvegarde illisible") }
     }
-    // Après une réinstallation (Android 10+), le fichier n'appartient plus à l'appli : on le fait choisir.
+    // Dernier recours : le sélecteur de fichiers d'Android (absent sur certaines TV).
     val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) importFrom(runCatching { FavoritesBackup.read(context, uri) }.getOrNull()) }
-    fun restoreFavorites() {
-        val json = runCatching { FavoritesBackup.load(context) }.getOrNull()
+    fun restoreFromImageOrPicker() {
+        val json = runCatching { FavoritesBackup.loadImage(context) }.getOrNull()
         if (json != null) {
             importFrom(json)
-        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            toast("Choisissez le fichier ${FavoritesBackup.FILE_NAME} dans Download/EXTV")
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             runCatching { pickBackup.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }
+                .onSuccess { toast("Choisissez le fichier ${FavoritesBackup.FILE_NAME} dans Download/EXTV") }
                 .onFailure { toast("Aucune sauvegarde trouvée") }
         } else {
             importFrom(null)
         }
     }
-    var pendingStorageAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val storagePermission = androidx.activity.compose.rememberLauncherForActivityResult(
+    var pendingPermissionAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
-        if (granted.values.all { it }) pendingStorageAction?.invoke() else toast("Autorisation de stockage refusée")
-        pendingStorageAction = null
+        if (granted.values.all { it }) pendingPermissionAction?.invoke() else toast("Autorisation refusée : impossible de lire la sauvegarde")
+        pendingPermissionAction = null
     }
-    fun withStorage(action: () -> Unit) {
-        val perms = arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        val ok = !FavoritesBackup.needsStoragePermission || perms.all {
-            androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    fun withPermissions(perms: Array<String>, action: () -> Unit) {
+        val missing = perms.filter {
+            androidx.core.content.ContextCompat.checkSelfPermission(context, it) != android.content.pm.PackageManager.PERMISSION_GRANTED
         }
-        if (ok) action() else {
-            pendingStorageAction = action
-            storagePermission.launch(perms)
+        if (missing.isEmpty()) action() else {
+            pendingPermissionAction = action
+            permissionLauncher.launch(missing.toTypedArray())
         }
+    }
+    fun restoreFavorites() {
+        // 1) Fichier créé par cette installation ; 2) copie image (après réinstallation) ; 3) sélecteur.
+        val own = runCatching { FavoritesBackup.load(context) }.getOrNull()
+        if (own != null) importFrom(own) else withPermissions(FavoritesBackup.imageReadPermissions, ::restoreFromImageOrPicker)
+    }
+    val writePermissions = if (FavoritesBackup.needsStoragePermission) {
+        arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    } else {
+        emptyArray()
     }
 
     val expiration = account.value?.expDate?.let { "Abonnement valable jusqu'au ${formatLongDate(it)}" }
@@ -366,8 +379,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             compact = compact,
             now = now,
             onSearch = { onNavigate(Routes.SEARCH) },
-            onBackupFavorites = { withStorage(::backupFavorites) },
-            onRestoreFavorites = { withStorage(::restoreFavorites) },
+            onBackupFavorites = { withPermissions(writePermissions, ::backupFavorites) },
+            onRestoreFavorites = { restoreFavorites() },
             onProfiles = onSwitchProfile,
             onSettings = { onNavigate(Routes.SETTINGS) },
             onExit = { activity?.finish() },
