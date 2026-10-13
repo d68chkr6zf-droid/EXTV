@@ -283,8 +283,8 @@ fun MovieDetailScreen() {
                 } else {
                     ActionButton("▶  Lecture", focusRequester = first, primary = true) { play(0) }
                 }
-                movie.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
                 ActionButton(if (fav) "★" else "☆") { fav = app.store.toggleFavorite(movie.toFavorite()) }
+                movie.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
             }
             movie.plot?.let { Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = Color(0xFFDCD5CB)) }
             movie.director?.let { Text("Réalisation : $it", color = C.TextDim, modifier = Modifier.padding(top = 16.dp)) }
@@ -385,8 +385,11 @@ fun SeriesDetailScreen() {
                                     else "▶  Épisode suivant S${ep.season}E${ep.episode}"
                                     ActionButton(label, focusRequester = first, primary = true) { playEpisode(ep) }
                                 }
-                                series.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
-                                ActionButton(if (fav) "★ Favori" else "☆ Ajouter aux favoris") { fav = app.store.toggleFavorite(series.toFavorite()) }
+                                // Favoris à gauche, bande-annonce à droite, sur la même ligne.
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    ActionButton(if (fav) "★ Favori" else "☆ Ajouter aux favoris") { fav = app.store.toggleFavorite(series.toFavorite()) }
+                                    series.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
+                                }
                             }
                         }
                     }
