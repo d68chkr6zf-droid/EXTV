@@ -51,6 +51,12 @@
             android:exported="false"
             android:screenOrientation="fullSensor"
             android:theme="@style/Theme.EXTV.Fullscreen" />
+        <activity
+            android:name=".player.TrailerActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.EXTV.Fullscreen" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

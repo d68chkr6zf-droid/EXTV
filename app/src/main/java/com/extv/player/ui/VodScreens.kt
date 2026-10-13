@@ -445,21 +445,9 @@ fun SeriesDetailScreen() {
 
 // --- Bande-annonce -------------------------------------------------------------------------------
 
-/** Ouvre la bande-annonce dans l'appli YouTube (ou le navigateur). */
-private fun openTrailer(context: android.content.Context, trailer: String) {
-    val t = trailer.trim()
-    val id = when {
-        t.startsWith("http") -> Regex("(?:v=|youtu\\.be/|embed/)([\\w-]{6,})").find(t)?.groupValues?.get(1)
-        else -> t
-    }
-    val web = if (t.startsWith("http")) t else "https://www.youtube.com/watch?v=$t"
-    val intents = listOfNotNull(
-        id?.let { android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$it")) },
-        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(web)),
-    )
-    val opened = intents.any { runCatching { context.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
-    if (!opened) android.widget.Toast.makeText(context, "Installez l'application YouTube pour voir la bande-annonce", android.widget.Toast.LENGTH_LONG).show()
-}
+/** Lit la bande-annonce dans l'appli (lecteur YouTube intégré, sans l'appli YouTube). */
+private fun openTrailer(context: android.content.Context, trailer: String) =
+    com.extv.player.player.TrailerActivity.start(context, trailer)
 
 /** Valeur de bande-annonce utilisable (les serveurs renvoient parfois "" ou "0"). */
 private fun String?.validTrailer(): String? = this?.trim()?.takeIf { it.length >= 6 && it != "null" }
