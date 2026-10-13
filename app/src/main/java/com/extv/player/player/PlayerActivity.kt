@@ -366,7 +366,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (nextShown && event.keyCode == KeyEvent.KEYCODE_BACK) {
-            // Comme Netflix : Retour masque le bouton et laisse défiler le générique.
+            // Retour masque le bouton (pour finir l'épisode tranquillement).
             if (event.action == KeyEvent.ACTION_UP) creditsFor = index
             return true
         }
@@ -490,35 +490,23 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             if (nextShown) {
-                // Comme Netflix : compte à rebours de 10 s qui se remplit, puis l'épisode suivant démarre seul.
+                // Bouton discret et semi-transparent pendant les 5 dernières minutes, sans compte à rebours.
                 val next = items.getOrNull(index + 1)
-                var left by remember(index) { mutableIntStateOf(NEXT_COUNTDOWN_S) }
-                LaunchedEffect(index) {
-                    while (left > 0) {
-                        kotlinx.coroutines.delay(1000)
-                        if (isPlaying) left--
-                    }
-                    playNext()
-                }
-                val fill by androidx.compose.animation.core.animateFloatAsState(
-                    1f - left.toFloat() / NEXT_COUNTDOWN_S,
-                    animationSpec = androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
-                    label = "next",
-                )
-                Column(Modifier.align(Alignment.BottomEnd).padding(48.dp), horizontalAlignment = Alignment.End) {
-                    Box(
-                        Modifier.clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF6B6B6B))
-                            .clickable { playNext() },
-                    ) {
-                        Box(Modifier.matchParentSize().fillMaxWidth(fill).background(Color.White))
-                        Row(Modifier.padding(horizontal = 26.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("▶", color = Color.Black, fontSize = 20.sp)
-                            Text("Épisode suivant", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
-                        }
-                    }
-                    next?.title?.let { Text(it, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
-                    Text("OK : lancer maintenant  ·  Retour : regarder le générique", color = C.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                Column(
+                    Modifier.align(Alignment.BottomEnd)
+                        .padding(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x66000000))
+                        .clickable { playNext() }
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    Text("▶  Épisode suivant", color = Color(0xDDFFFFFF), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        (next?.title?.let { "$it  ·  " } ?: "") + "OK",
+                        color = Color(0x99FFFFFF),
+                        fontSize = 12.sp,
+                    )
                 }
             }
             if (menuVisible) OptionsMenu(Modifier.align(Alignment.CenterEnd))
@@ -581,8 +569,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NEXT_BUTTON_MS = 60_000L
-        private const val NEXT_COUNTDOWN_S = 10
+        private const val NEXT_BUTTON_MS = 5 * 60_000L
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
