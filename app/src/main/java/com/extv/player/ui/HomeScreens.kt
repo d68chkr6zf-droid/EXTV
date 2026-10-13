@@ -60,8 +60,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -208,7 +206,7 @@ fun AddProfileScreen(onDone: () -> Unit) {
             ExtvLogo(34.sp)
             Text("Connexion", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
             Field("Nom d'utilisateur", username, focusRequester = first) { username = it }
-            Field("Mot de passe", password, KeyboardType.Password, secret = true) { password = it }
+            Field("Mot de passe", password, secret = true) { password = it }
             errorMsg?.let { Text(it, color = C.Error) }
             ActionButton(if (busy) "Connexion…" else "Se connecter", primary = true) { if (!busy) submit() }
             Text("Utilisez uniquement des abonnements et contenus dont vous détenez les droits.", color = C.TextDim, fontSize = 12.sp)
@@ -225,9 +223,7 @@ private fun Field(
     focusRequester: FocusRequester? = null,
     onChange: (String) -> Unit,
 ) {
-    // Mot de passe : bouton « Afficher / Masquer » pour vérifier ce qui a été tapé.
-    var shown by remember { mutableStateOf(false) }
-    val hidden = secret && !shown
+    // Le mot de passe reste visible en clair pour vérifier la saisie (pas de correction automatique).
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -236,18 +232,7 @@ private fun Field(
         modifier = Modifier.fillMaxWidth().let { if (focusRequester != null) it.focusRequester(focusRequester) else it },
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.Accent, focusedLabelColor = C.Accent),
-        keyboardOptions = KeyboardOptions(
-            keyboardType = if (secret && shown) KeyboardType.Text else keyboard,
-            autoCorrectEnabled = !secret,
-        ),
-        visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-        trailingIcon = if (secret) {
-            {
-                TextButton(onClick = { shown = !shown }) {
-                    Text(if (shown) "Masquer" else "Afficher", color = C.Accent, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        } else null,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = !secret),
     )
 }
 
