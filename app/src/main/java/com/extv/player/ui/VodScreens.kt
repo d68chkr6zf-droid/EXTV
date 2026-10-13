@@ -283,6 +283,7 @@ fun MovieDetailScreen() {
                 } else {
                     ActionButton("▶  Lecture", focusRequester = first, primary = true) { play(0) }
                 }
+                movie.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
                 ActionButton(if (fav) "★" else "☆") { fav = app.store.toggleFavorite(movie.toFavorite()) }
             }
             movie.plot?.let { Text(it, fontSize = 16.sp, lineHeight = 24.sp, color = Color(0xFFDCD5CB)) }
@@ -384,6 +385,7 @@ fun SeriesDetailScreen() {
                                     else "▶  Épisode suivant S${ep.season}E${ep.episode}"
                                     ActionButton(label, focusRequester = first, primary = true) { playEpisode(ep) }
                                 }
+                                series.trailer.validTrailer()?.let { t -> ActionButton("Bande-annonce") { openTrailer(context, t) } }
                                 ActionButton(if (fav) "★ Favori" else "☆ Ajouter aux favoris") { fav = app.store.toggleFavorite(series.toFavorite()) }
                             }
                         }
@@ -440,3 +442,24 @@ fun SeriesDetailScreen() {
         }
     }
 }
+
+// --- Bande-annonce -------------------------------------------------------------------------------
+
+/** Ouvre la bande-annonce dans l'appli YouTube (ou le navigateur). */
+private fun openTrailer(context: android.content.Context, trailer: String) {
+    val t = trailer.trim()
+    val id = when {
+        t.startsWith("http") -> Regex("(?:v=|youtu\\.be/|embed/)([\\w-]{6,})").find(t)?.groupValues?.get(1)
+        else -> t
+    }
+    val web = if (t.startsWith("http")) t else "https://www.youtube.com/watch?v=$t"
+    val intents = listOfNotNull(
+        id?.let { android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$it")) },
+        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(web)),
+    )
+    val opened = intents.any { runCatching { context.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
+    if (!opened) android.widget.Toast.makeText(context, "Installez l'application YouTube pour voir la bande-annonce", android.widget.Toast.LENGTH_LONG).show()
+}
+
+/** Valeur de bande-annonce utilisable (les serveurs renvoient parfois "" ou "0"). */
+private fun String?.validTrailer(): String? = this?.trim()?.takeIf { it.length >= 6 && it != "null" }

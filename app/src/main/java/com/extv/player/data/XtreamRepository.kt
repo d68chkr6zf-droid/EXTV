@@ -195,6 +195,7 @@ class XtreamRepository(
             cast = info.str("cast") ?: info.str("actors"),
             director = info.str("director"),
             poster = info.str("movie_image") ?: info.str("cover_big") ?: movie.poster,
+            trailer = info.str("youtube_trailer") ?: info.str("trailer"),
         )
     }
 
@@ -206,6 +207,7 @@ class XtreamRepository(
             plot = info?.str("plot") ?: series.plot,
             cover = info?.str("cover") ?: series.cover,
             rating = info?.str("rating")?.takeIf { it != "0" } ?: series.rating,
+            trailer = info?.str("youtube_trailer") ?: info?.str("trailer"),
         )
         // "episodes" est un objet { "1": [..], "2": [..] } chez la plupart des serveurs, parfois un tableau.
         val raw = mutableListOf<JSONObject>()

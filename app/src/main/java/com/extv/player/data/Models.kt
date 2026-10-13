@@ -76,6 +76,8 @@ data class Movie(
     val year: String? = null,
     val cast: String? = null,
     val director: String? = null,
+    /** Bande-annonce : identifiant ou lien YouTube fourni par le serveur. */
+    val trailer: String? = null,
     /** Date d'ajout sur le serveur (ms), pour « Récemment ajouté ». */
     val added: Long = 0,
 )
@@ -88,6 +90,8 @@ data class Series(
     val plot: String?,
     val rating: String?,
     val added: Long = 0,
+    /** Bande-annonce : identifiant ou lien YouTube fourni par le serveur. */
+    val trailer: String? = null,
 )
 
 data class Episode(
