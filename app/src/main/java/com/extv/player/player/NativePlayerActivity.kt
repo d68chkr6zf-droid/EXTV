@@ -155,6 +155,8 @@ class NativePlayerActivity : ComponentActivity() {
     // Infos techniques affichées sous le titre (résolution, images/s, fréquence de l'écran, images perdues).
     @Volatile private var measuredFps = 0f
     private var droppedFrames by mutableIntStateOf(0)
+    private var stalls by mutableIntStateOf(0)
+    private var wasReady = false
     private var techInfo by mutableStateOf("")
 
     private val analytics = object : AnalyticsListener {
@@ -184,12 +186,16 @@ class NativePlayerActivity : ComponentActivity() {
         }
         if (hz > 0f) parts += "écran %.2f Hz".format(hz)
         parts += "images perdues : $droppedFrames"
+        parts += "arrêts : $stalls"
+        parts += "tampon %.1f s".format(p.totalBufferedDuration / 1000f)
         techInfo = parts.joinToString("  ·  ")
     }
 
     private fun resetRateMatch() {
         measuredFps = 0f
         droppedFrames = 0
+        stalls = 0
+        wasReady = false
         firstPtsUs = -1L
         lastPtsUs = -1L
         frameCount = 0
@@ -315,7 +321,11 @@ class NativePlayerActivity : ComponentActivity() {
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
             isBuffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
-            if (state == Player.STATE_READY) errorText = null
+            if (state == Player.STATE_READY) {
+                errorText = null
+                wasReady = true
+            }
+            if (state == Player.STATE_BUFFERING && wasReady) stalls++
             if (state == Player.STATE_ENDED) handler.post { onEnd() }
         }
 
