@@ -298,7 +298,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             loading = isLoading(ContentType.SERIES), onRefresh = { load(ContentType.SERIES, true) }) { onNavigate(Routes.SERIES) }
     }
     val smallTiles: @Composable (Modifier) -> Unit = { m ->
-        SmallTile("Favoris\nTV", R.drawable.ic_fav_tv, m) { onNavigate(Routes.FAV_TV) }
+        SmallTile("Favoris\nTV en direct", R.drawable.ic_fav_tv, m) { onNavigate(Routes.FAV_TV) }
         SmallTile("Favoris\nFilms & Séries", R.drawable.ic_fav_vod, m) { onNavigate(Routes.FAV_VOD) }
         SmallTile("Replay", R.drawable.ic_replay, m) { onNavigate(Routes.REPLAY) }
     }
