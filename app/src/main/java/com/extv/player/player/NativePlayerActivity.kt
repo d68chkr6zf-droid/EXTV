@@ -69,6 +69,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.extv.player.App
@@ -116,6 +117,7 @@ class NativePlayerActivity : ComponentActivity() {
                 val d = it.duration
                 lengthMs = replay ?: if (d == MC.TIME_UNSET || d < 0) 0L else d
             }
+            if (overlayVisible) refreshTechInfo()
             handler.postDelayed(this, 500)
         }
     }
@@ -145,11 +147,49 @@ class NativePlayerActivity : ComponentActivity() {
         if (frameCount >= 60 && ptsUs > firstPtsUs) {
             rateMatched = true
             val fps = frameCount * 1_000_000f / (ptsUs - firstPtsUs)
+            measuredFps = fps
             handler.post { matchRefreshRate(fps) }
         }
     }
 
+    // Infos techniques affichées sous le titre (résolution, images/s, fréquence de l'écran, images perdues).
+    @Volatile private var measuredFps = 0f
+    private var droppedFrames by mutableIntStateOf(0)
+    private var techInfo by mutableStateOf("")
+
+    private val analytics = object : AnalyticsListener {
+        override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, count: Int, elapsedMs: Long) {
+            droppedFrames += count
+        }
+    }
+
+    private fun refreshTechInfo() {
+        val p = player ?: return
+        val f = p.videoFormat
+        @Suppress("DEPRECATION")
+        val display = window.decorView.display ?: windowManager.defaultDisplay
+        val hz = display?.refreshRate ?: 0f
+        val parts = mutableListOf<String>()
+        if (f != null) {
+            parts += "${f.width}×${f.height}"
+            val codec = when {
+                f.sampleMimeType?.contains("hevc") == true -> "H.265"
+                f.sampleMimeType?.contains("avc") == true -> "H.264"
+                f.sampleMimeType?.contains("mpeg2") == true -> "MPEG-2"
+                else -> f.sampleMimeType?.substringAfter('/') ?: "?"
+            }
+            parts += codec
+            val fps = if (f.frameRate > 0f) f.frameRate else measuredFps
+            if (fps > 0f) parts += "%.2f img/s".format(fps)
+        }
+        if (hz > 0f) parts += "écran %.2f Hz".format(hz)
+        parts += "images perdues : $droppedFrames"
+        techInfo = parts.joinToString("  ·  ")
+    }
+
     private fun resetRateMatch() {
+        measuredFps = 0f
+        droppedFrames = 0
         firstPtsUs = -1L
         lastPtsUs = -1L
         frameCount = 0
@@ -267,6 +307,7 @@ class NativePlayerActivity : ComponentActivity() {
                     .build()
                 addListener(listener)
                 setVideoFrameMetadataListener(frameListener)
+                addAnalyticsListener(analytics)
             }
     }
 
@@ -516,6 +557,7 @@ class NativePlayerActivity : ComponentActivity() {
                     if (live) {
                         Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  MENU : options", color = C.TextDim, fontSize = 14.sp)
                     }
+                    if (techInfo.isNotEmpty()) Text(techInfo, color = C.TextDim, fontSize = 13.sp)
                 }
             }
             AnimatedVisibility(overlayVisible, Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
