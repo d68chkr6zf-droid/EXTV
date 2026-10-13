@@ -246,6 +246,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     val repo = app.repository() ?: return
     val activity = LocalContext.current as? Activity
     val scope = rememberCoroutineScope()
+    UpdatePrompt()
     val size = windowSize()
     val compact = size == WindowSize.Compact
     // Grille horizontale sur TV, et sur smartphone/tablette tenus en paysage.
