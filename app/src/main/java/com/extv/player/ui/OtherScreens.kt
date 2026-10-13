@@ -243,6 +243,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 } else {
                     updateText = "Téléchargement de la version ${release.versionName}…"
                     val apk = Updater.download(context) { p -> updateText = "Téléchargement… ${(p * 100).toInt()} %" }
+                    if (!Updater.isNewer(context, apk)) {
+                        updateText = "Version ${release.versionName} encore en cours de publication, réessayez dans 2 min"
+                        updating = false
+                        return@launch
+                    }
                     updateText = "Installation de la version ${release.versionName}"
                     Updater.install(context, apk)
                 }

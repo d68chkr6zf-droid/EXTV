@@ -83,14 +83,20 @@ fun UpdatePrompt() {
         progress = 0f
         message = null
         scope.launch {
-            runCatching {
-                val apk = Updater.download(context) { p -> progress = p }
-                installingVersion = r.versionCode
-                installingSince = System.currentTimeMillis()
-                Updater.install(context, apk)
-                release = null
-            }.onFailure { message = "Téléchargement impossible, réessayez plus tard." }
+            val apk = runCatching { Updater.download(context) { p -> progress = p } }.getOrNull()
             progress = null
+            when {
+                apk == null -> message = "Téléchargement impossible, réessayez dans quelques minutes."
+                !Updater.isNewer(context, apk) ->
+                    message = "La version ${r.versionName} est encore en cours de publication. Réessayez dans 2 minutes."
+                else -> runCatching { Updater.install(context, apk) }
+                    .onSuccess {
+                        installingVersion = r.versionCode
+                        installingSince = System.currentTimeMillis()
+                        release = null
+                    }
+                    .onFailure { message = "L'installation n'a pas pu s'ouvrir (${it.javaClass.simpleName}). Essayez Paramètres > Rechercher une mise à jour." }
+            }
         }
     }
 

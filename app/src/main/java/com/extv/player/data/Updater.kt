@@ -69,6 +69,7 @@ object Updater {
                 }
             }
         }
+        check(file.length() > 0) { "fichier vide" }
         file
     }
 
@@ -86,6 +87,16 @@ object Updater {
             }
         }
     }
+
+    /** Numéro de version contenu dans l'APK téléchargé (0 si le fichier est illisible ou incomplet). */
+    fun apkVersionCode(context: Context, apk: File): Long {
+        @Suppress("DEPRECATION")
+        val info = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return 0
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    }
+
+    /** L'APK téléchargé est-il bien plus récent que la version installée ? */
+    fun isNewer(context: Context, apk: File): Boolean = apkVersionCode(context, apk) > BuildConfig.VERSION_CODE
 
     fun install(context: Context, apk: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", apk)
