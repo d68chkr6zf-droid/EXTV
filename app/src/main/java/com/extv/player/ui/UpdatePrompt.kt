@@ -22,10 +22,14 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.extv.player.data.Updater
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 
-/** Vérification faite une seule fois par lancement de l'appli. */
-private var updateChecked = false
+/** Version pour laquelle l'utilisateur a choisi « Plus tard » (on ne la repropose pas avant le prochain lancement). */
+private var postponedVersion = 0
+
+/** Intervalle entre deux vérifications tant que l'accueil est affiché. */
+private const val CHECK_EVERY_MS = 60_000L
 
 /**
  * Au démarrage, si une nouvelle version est publiée, propose de l'installer :
@@ -40,10 +44,19 @@ fun UpdatePrompt() {
     var progress by remember { mutableStateOf<Float?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        if (updateChecked) return@LaunchedEffect
-        updateChecked = true
-        release = runCatching { Updater.check() }.getOrNull()
+    // Vérifie à l'ouverture de l'accueil puis toutes les minutes, seulement quand l'accueil est à l'écran
+    // (jamais pendant la lecture d'une vidéo).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) {
+                if (release == null) {
+                    val found = runCatching { Updater.check() }.getOrNull()
+                    if (found != null && found.versionCode != postponedVersion) release = found
+                }
+                kotlinx.coroutines.delay(CHECK_EVERY_MS)
+            }
+        }
     }
 
     val r = release ?: return
@@ -70,7 +83,7 @@ fun UpdatePrompt() {
     }
 
     AlertDialog(
-        onDismissRequest = { if (progress == null) release = null },
+        onDismissRequest = { if (progress == null) { postponedVersion = r.versionCode; release = null } },
         containerColor = C.Surface2,
         title = { Text("Mise à jour disponible", fontWeight = FontWeight.Bold) },
         text = {
@@ -93,7 +106,7 @@ fun UpdatePrompt() {
             }
         },
         dismissButton = {
-            if (progress == null) TextButton(onClick = { release = null }) { Text("Plus tard", color = C.TextDim) }
+            if (progress == null) TextButton(onClick = { postponedVersion = r.versionCode; release = null }) { Text("Plus tard", color = C.TextDim) }
         },
     )
 }
