@@ -252,7 +252,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     }
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
-        ScreenTitle("Paramètres")
+        ScreenTitle("Paramètres · version ${Updater.currentVersion}")
         key(tick) {
             Section("Compte")
             InfoRow("Compte", profile?.name ?: "-")
@@ -263,8 +263,9 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             }
 
             Section("Application")
-            SettingRow("Mise à jour (version ${Updater.currentVersion})", updateText) { checkUpdate() }
+            InfoRow("Version installée", Updater.currentVersion)
             InfoRow("Vérification automatique", Updater.lastAutoCheck.value)
+            SettingRow("Rechercher une mise à jour (manuel)", updateText) { checkUpdate() }
 
             SettingRow("Cadrage de l'écran (bords coupés)", if (store.overscan < 0) "Automatique" else "Marge ${store.overscan} %") {
                 store.overscan = OVERSCAN_VALUES[(OVERSCAN_VALUES.indexOf(store.overscan) + 1).mod(OVERSCAN_VALUES.size)]
