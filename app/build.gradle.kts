@@ -13,14 +13,35 @@ android {
         applicationId = "com.extv.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Numéro de version = numéro de compilation GitHub Actions (sert au bouton « Mise à jour »).
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "1.0.$build"
+        buildConfigField("String", "UPDATE_URL", "\"https://github.com/d68chkr6zf-droid/EXTV/releases/download/latest/\"")
 
         // Serveur Xtream proposé par défaut sur l'écran de connexion (modifiable par l'utilisateur).
         buildConfigField("String", "DEFAULT_SERVER", "\"http://718e.dataxtm.com\"")
     }
 
+    // Clé de signature fixe (fournie par les secrets GitHub EXTV_SIGNING_KEY et EXTV_SIGNING_PASSWORD, jamais dans le dépôt) :
+    // indispensable pour installer une mise à jour par-dessus la version existante.
+    val keystore = System.getenv("EXTV_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (keystore != null) {
+            create("fixed") {
+                storeFile = keystore
+                storeType = "PKCS12"
+                storePassword = System.getenv("EXTV_KEYSTORE_PASSWORD")
+                keyAlias = "extv"
+                keyPassword = System.getenv("EXTV_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (keystore != null) signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

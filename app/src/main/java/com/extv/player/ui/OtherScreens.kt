@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.extv.player.App
+import com.extv.player.data.Updater
 import com.extv.player.data.Category
 import com.extv.player.data.ContentType
 import com.extv.player.data.Favorite
@@ -216,9 +217,38 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var info by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var updateText by remember { mutableStateOf("Vérifier") }
+    var updating by remember { mutableStateOf(false) }
 
     fun changed() {
         tick++
+    }
+
+    fun checkUpdate() {
+        if (updating) return
+        if (!Updater.canInstall(context)) {
+            updateText = "Autorisez EXTV à installer des applications, puis revenez"
+            Updater.openInstallPermission(context)
+            return
+        }
+        updating = true
+        updateText = "Recherche…"
+        scope.launch {
+            runCatching {
+                val release = Updater.check()
+                if (release == null) {
+                    updateText = "Vous avez la dernière version"
+                } else {
+                    updateText = "Téléchargement de la version ${release.versionName}…"
+                    val apk = Updater.download(context) { p -> updateText = "Téléchargement… ${(p * 100).toInt()} %" }
+                    updateText = "Installation de la version ${release.versionName}"
+                    Updater.install(context, apk)
+                }
+            }.onFailure { updateText = "Vérification impossible, réessayez plus tard" }
+            updating = false
+        }
     }
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
@@ -231,6 +261,9 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 a.expDate?.let { InfoRow("Expiration", formatDate(it)) }
                 a.maxConnections?.let { InfoRow("Connexions", "${a.activeConnections ?: 0} / $it") }
             }
+
+            Section("Application")
+            SettingRow("Mise à jour (version ${Updater.currentVersion})", updateText) { checkUpdate() }
 
             Section("Lecteur")
             SettingRow("Lecteur vidéo", if (store.playerEngine == "native") "Natif (Android)" else "VLC", first) {

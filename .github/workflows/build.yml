@@ -17,12 +17,30 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - name: Compiler l'APK de debug
+      - name: Préparer la clé de signature fixe
+        env:
+          EXTV_SIGNING_KEY: ${{ secrets.EXTV_SIGNING_KEY }}
+          EXTV_SIGNING_PASSWORD: ${{ secrets.EXTV_SIGNING_PASSWORD }}
+        run: |
+          if [ -n "$EXTV_SIGNING_KEY" ] && [ -n "$EXTV_SIGNING_PASSWORD" ]; then
+            echo "$EXTV_SIGNING_KEY" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/extv.p12"
+            echo "EXTV_KEYSTORE=$RUNNER_TEMP/extv.p12" >> "$GITHUB_ENV"
+            echo "EXTV_KEYSTORE_PASSWORD=$EXTV_SIGNING_PASSWORD" >> "$GITHUB_ENV"
+            echo "Clé fixe trouvée"
+          else
+            echo "Pas de secrets EXTV_SIGNING_KEY / EXTV_SIGNING_PASSWORD : signature de debug temporaire"
+          fi
+      - name: Compiler l'APK
         run: ./gradlew assembleDebug --stacktrace
-      - name: Renommer l'APK
+      - name: Renommer l'APK et écrire le fichier de version
         run: |
           mkdir dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/EXTV.apk
+          rm -f "$RUNNER_TEMP/extv.p12"
+          # Le bouton « Mise à jour » de l'appli ne propose que les versions signées avec la clé fixe.
+          if [ -n "$EXTV_KEYSTORE" ]; then
+            echo "{\"versionCode\": $GITHUB_RUN_NUMBER, \"versionName\": \"1.0.$GITHUB_RUN_NUMBER\"}" > dist/version.json
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: extv-debug
@@ -33,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view latest --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
-            | grep -vx 'EXTV.apk' \
+            | grep -vx -e 'EXTV.apk' -e 'version.json' \
             | xargs -r -I{} gh release delete-asset latest {} --repo "$GITHUB_REPOSITORY" -y || true
       - name: Publier la dernière version (lien de téléchargement direct)
         if: github.ref == 'refs/heads/main'
@@ -43,4 +61,6 @@ jobs:
           name: EXTV (dernière version)
           prerelease: true
           make_latest: true
-          files: dist/*.apk
+          files: |
+            dist/EXTV.apk
+            dist/version.json
