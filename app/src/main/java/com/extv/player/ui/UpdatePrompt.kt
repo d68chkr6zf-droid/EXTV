@@ -27,6 +27,11 @@ import kotlinx.coroutines.launch
 /** Version pour laquelle l'utilisateur a choisi « Plus tard » (on ne la repropose pas avant le prochain lancement). */
 private var postponedVersion = 0
 
+/** Version dont l'installation vient d'être lancée, et à quel moment : on ne la repropose pas tout de suite. */
+private var installingVersion = 0
+private var installingSince = 0L
+private const val INSTALL_GRACE_MS = 5 * 60_000L
+
 /** Intervalle entre deux vérifications tant que l'appli est ouverte. */
 private const val CHECK_EVERY_MS = 60_000L
 
@@ -54,7 +59,9 @@ fun UpdatePrompt() {
                 runCatching { Updater.check() }
                     .onSuccess { found ->
                         Updater.lastAutoCheck.value = if (found == null) "$time · à jour" else "$time · version ${found.versionName} trouvée"
-                        if (found != null && found.versionCode != postponedVersion) release = found
+                        val installing = found?.versionCode == installingVersion &&
+                            System.currentTimeMillis() - installingSince < INSTALL_GRACE_MS
+                        if (found != null && found.versionCode != postponedVersion && !installing) release = found
                     }
                     .onFailure { Updater.lastAutoCheck.value = "$time · échec (${it.javaClass.simpleName})" }
             }
@@ -78,6 +85,8 @@ fun UpdatePrompt() {
         scope.launch {
             runCatching {
                 val apk = Updater.download(context) { p -> progress = p }
+                installingVersion = r.versionCode
+                installingSince = System.currentTimeMillis()
                 Updater.install(context, apk)
                 release = null
             }.onFailure { message = "Téléchargement impossible, réessayez plus tard." }
