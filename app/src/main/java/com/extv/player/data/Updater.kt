@@ -31,6 +31,9 @@ object Updater {
 
     val currentVersion: String get() = BuildConfig.VERSION_NAME
 
+    /** Résultat de la dernière vérification automatique (affiché dans les paramètres). */
+    val lastAutoCheck = androidx.compose.runtime.mutableStateOf("pas encore faite")
+
     /** Dernière version publiée si elle est plus récente que celle installée, sinon null. */
     suspend fun check(): Release? = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(BuildConfig.UPDATE_URL + "version.json?t=${System.currentTimeMillis()}").build()

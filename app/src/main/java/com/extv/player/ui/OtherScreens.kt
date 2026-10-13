@@ -264,6 +264,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
 
             Section("Application")
             SettingRow("Mise à jour (version ${Updater.currentVersion})", updateText) { checkUpdate() }
+            InfoRow("Vérification automatique", Updater.lastAutoCheck.value)
 
             SettingRow("Cadrage de l'écran (bords coupés)", if (store.overscan < 0) "Automatique" else "Marge ${store.overscan} %") {
                 store.overscan = OVERSCAN_VALUES[(OVERSCAN_VALUES.indexOf(store.overscan) + 1).mod(OVERSCAN_VALUES.size)]

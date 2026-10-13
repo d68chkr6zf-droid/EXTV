@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.extv.player.data.Updater
-import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 
 /** Version pour laquelle l'utilisateur a choisi « Plus tard » (on ne la repropose pas avant le prochain lancement). */
@@ -46,16 +45,20 @@ fun UpdatePrompt() {
 
     // Vérifie à l'ouverture puis toutes les minutes tant que l'appli est ouverte. Pendant la lecture d'une
     // vidéo (écran du lecteur), on attend le retour dans l'appli pour ne pas interrompre le film.
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle) {
-        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
-            while (true) {
-                if (release == null) {
-                    val found = runCatching { Updater.check() }.getOrNull()
-                    if (found != null && found.versionCode != postponedVersion) release = found
-                }
-                kotlinx.coroutines.delay(CHECK_EVERY_MS)
+    val activity = context as? androidx.activity.ComponentActivity
+    LaunchedEffect(Unit) {
+        while (true) {
+            val visible = activity == null || activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+            if (release == null && visible) {
+                val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.FRANCE).format(java.util.Date())
+                runCatching { Updater.check() }
+                    .onSuccess { found ->
+                        Updater.lastAutoCheck.value = if (found == null) "$time · à jour" else "$time · version ${found.versionName} trouvée"
+                        if (found != null && found.versionCode != postponedVersion) release = found
+                    }
+                    .onFailure { Updater.lastAutoCheck.value = "$time · échec (${it.javaClass.simpleName})" }
             }
+            kotlinx.coroutines.delay(CHECK_EVERY_MS)
         }
     }
 
