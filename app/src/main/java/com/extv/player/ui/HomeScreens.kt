@@ -2,6 +2,7 @@ package com.extv.player.ui
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import com.extv.player.data.AccountInfo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -374,12 +375,20 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
 
     val expiration = account.value?.expDate?.let { "Abonnement valable jusqu'au ${formatLongDate(it)}" }
     account.value?.expDate?.let { ExpiryWarning(it) }
+    // Connexions en cours, actualisées toutes les 30 secondes.
+    val connections = androidx.compose.runtime.produceState<AccountInfo?>(null, app.store.activeProfileId) {
+        while (true) {
+            runCatching { repo.accountInfo() }.getOrNull()?.let { value = it }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
         TopBar(
             compact = compact,
             now = now,
-            onSearch = { onNavigate(Routes.SEARCH) },
+            users = connections.value?.let { (it.activeConnections ?: 0) + 1 },
+            maxUsers = connections.value?.maxConnections,
             onBackupFavorites = { withPermissions(writePermissions, ::backupFavorites) },
             onRestoreFavorites = { restoreFavorites() },
             onProfiles = onSwitchProfile,
@@ -426,7 +435,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
 private fun TopBar(
     compact: Boolean,
     now: Long,
-    onSearch: () -> Unit,
+    users: Int?,
+    maxUsers: Int?,
     onBackupFavorites: () -> Unit,
     onRestoreFavorites: () -> Unit,
     onProfiles: () -> Unit,
@@ -444,17 +454,24 @@ private fun TopBar(
             )
         }
         Spacer(Modifier.weight(1f))
-        if (!compact) {
-            FocusTile(onClick = onSearch, shape = RoundedCornerShape(24.dp), normalColor = C.Surface2) {
-                Row(Modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = C.TextDim, modifier = Modifier.size(20.dp))
-                    Text("Rechercher", color = C.TextDim, modifier = Modifier.padding(start = 8.dp, end = 40.dp))
-                }
+        if (users != null) {
+            // Nombre d'appareils qui utilisent l'abonnement : cet appareil + ceux qui regardent ailleurs.
+            val over = maxUsers != null && users > maxUsers
+            Row(
+                Modifier.clip(RoundedCornerShape(24.dp))
+                    .background(if (over) Color(0xFF8B1A1A) else C.Surface2)
+                    .padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Person, contentDescription = null, tint = if (over) Color.White else C.TextDim, modifier = Modifier.size(20.dp))
+                Text(
+                    if (users > 1) "$users utilisateurs" else "1 utilisateur",
+                    color = if (over) Color.White else C.TextDim,
+                    fontWeight = if (over) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
-            Spacer(Modifier.width(16.dp))
-        } else {
-            RoundIconButton(Icons.Default.Search, "Rechercher", 40.dp, onSearch)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
         }
         val gap = if (compact) 8.dp else 12.dp
         val btn = if (compact) 40.dp else 46.dp
