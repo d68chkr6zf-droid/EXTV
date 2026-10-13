@@ -299,7 +299,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     }
     val smallTiles: @Composable (Modifier) -> Unit = { m ->
         SmallTile("Favoris TV", R.drawable.ic_fav_tv, m) { onNavigate(Routes.FAV_TV) }
-        SmallTile("Favoris Films & Séries", R.drawable.ic_fav_vod, m) { onNavigate(Routes.FAV_VOD) }
+        SmallTile("Favoris\nFilms & Séries", R.drawable.ic_fav_vod, m) { onNavigate(Routes.FAV_VOD) }
         SmallTile("Replay", R.drawable.ic_replay, m) { onNavigate(Routes.REPLAY) }
     }
     // --- Sauvegarde / réintégration des favoris sur le boîtier ---
@@ -549,7 +549,7 @@ private fun SmallTile(label: String, icon: Int, modifier: Modifier, onClick: () 
         if (windowSize() == WindowSize.Compact) {
             Column(Modifier.align(Alignment.Center).padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(painterResource(icon), contentDescription = null, tint = if (focused) C.Accent else C.Text, modifier = Modifier.size(24.dp))
-                Text(label.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+                Text(label.replace("\n", " ").uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
             }
         } else {
             Row(Modifier.align(Alignment.Center).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
