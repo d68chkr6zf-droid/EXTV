@@ -52,6 +52,7 @@ import com.extv.player.data.Category
 import kotlinx.coroutines.async
 import com.extv.player.data.normalized
 import com.extv.player.data.ContentType
+import com.extv.player.data.Episode
 import com.extv.player.data.Favorite
 import com.extv.player.data.Movie
 import com.extv.player.data.Series
@@ -326,9 +327,35 @@ fun SeriesDetailScreen() {
         Backdrop(detail.value?.series?.cover ?: initial.cover)
         LoadView(detail) { d ->
             val series = d.series
-            var season by remember { mutableIntStateOf(d.seasons.keys.minOrNull() ?: 1) }
+            val ordered = remember(d) { d.seasons.toSortedMap().values.flatten() }
+            // Épisode à reprendre : le dernier lancé s'il n'est pas fini, sinon le suivant.
+            val resume = remember(d, refresh) {
+                val lastKey = app.store.lastEpisode(series.id)
+                val last = ordered.indexOfFirst { "ep:${it.id}" == lastKey }
+                when {
+                    last < 0 -> null
+                    app.store.position(lastKey!!) > 0 -> ordered[last] to true
+                    last < ordered.lastIndex -> ordered[last + 1] to false
+                    else -> null
+                }
+            }
+            var season by remember { mutableIntStateOf(resume?.first?.season ?: d.seasons.keys.minOrNull() ?: 1) }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
             val episodes = d.seasons[season].orEmpty()
+
+            fun playEpisode(ep: Episode) {
+                val list = d.seasons[ep.season].orEmpty()
+                val queue = list.map {
+                    PlayItem(
+                        it.streamUrl,
+                        "${series.name} · S${it.season}E${it.episode} · ${it.title}",
+                        "ep:${it.id}",
+                        historyType = ContentType.SERIES,
+                        historyId = series.id,
+                    )
+                }
+                PlayQueue.start(context, queue, list.indexOf(ep).coerceAtLeast(0), live = false)
+            }
 
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(if (compact) 300.dp else 380.dp),
@@ -351,7 +378,15 @@ fun SeriesDetailScreen() {
                             series.plot?.let {
                                 Text(it, maxLines = if (compact) 4 else 5, overflow = TextOverflow.Ellipsis, color = Color(0xFFDCD5CB), modifier = Modifier.padding(vertical = 8.dp))
                             }
-                            ActionButton(if (fav) "★ Favori" else "☆ Ajouter aux favoris") { fav = app.store.toggleFavorite(series.toFavorite()) }
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                resume?.let { (ep, started) ->
+                                    val pos = app.store.position("ep:${ep.id}")
+                                    val label = if (started) "▶  Reprendre S${ep.season}E${ep.episode} à ${formatDuration(pos)}"
+                                    else "▶  Épisode suivant S${ep.season}E${ep.episode}"
+                                    ActionButton(label, focusRequester = first, primary = true) { playEpisode(ep) }
+                                }
+                                ActionButton(if (fav) "★ Favori" else "☆ Ajouter aux favoris") { fav = app.store.toggleFavorite(series.toFavorite()) }
+                            }
                         }
                     }
                 }
@@ -364,7 +399,7 @@ fun SeriesDetailScreen() {
                                 FocusTile(
                                     onClick = { season = n },
                                     selected = n == season,
-                                    focusRequester = if (n == season) first else null,
+                                    focusRequester = if (n == season && resume == null) first else null,
                                     shape = RoundedCornerShape(20.dp),
                                     normalColor = C.Surface2,
                                 ) {
@@ -378,18 +413,7 @@ fun SeriesDetailScreen() {
                     val resumeKey = "ep:${ep.id}"
                     val pos = remember(refresh, resumeKey) { app.store.position(resumeKey) }
                     FocusTile(
-                        onClick = {
-                            val queue = episodes.map {
-                                PlayItem(
-                                    it.streamUrl,
-                                    "${series.name} · S${it.season}E${it.episode} · ${it.title}",
-                                    "ep:${it.id}",
-                                    historyType = ContentType.SERIES,
-                                    historyId = series.id,
-                                )
-                            }
-                            PlayQueue.start(context, queue, i, live = false)
-                        },
+                        onClick = { playEpisode(ep) },
                         modifier = Modifier.fillMaxWidth(),
                         normalColor = Color(0xCC17151C),
                         focusScale = 1.02f,

@@ -33,6 +33,10 @@ private suspend fun <T> IptvRepository.entriesOf(
         add(CategoryEntry(Category(Category.FAVORITES, "Favoris", type), visible.count { idOf(it) in favorites }))
         val historyName = if (type == ContentType.LIVE) "Historique" else "Récemment regardé"
         add(CategoryEntry(Category(Category.HISTORY, historyName, type), visible.count { idOf(it) in history }))
+        if (type != ContentType.LIVE) {
+            val started = store.inProgress(type).toSet()
+            add(CategoryEntry(Category(Category.CONTINUE, "Reprendre la lecture", type), visible.count { idOf(it) in started }))
+        }
         if (withRecent) add(CategoryEntry(Category(Category.RECENT, "Récemment ajouté", type), minOf(RECENT_LIMIT, visible.size)))
         categories(type).forEach { c ->
             val n = counts[c.id] ?: 0
@@ -61,6 +65,10 @@ private suspend fun <T> IptvRepository.itemsOf(
         Category.HISTORY -> {
             val byId = visible.associateBy(idOf)
             store.history(type).mapNotNull { byId[it] }
+        }
+        Category.CONTINUE -> {
+            val byId = visible.associateBy(idOf)
+            store.inProgress(type).mapNotNull { byId[it] }
         }
         Category.RECENT -> if (addedOf != null) visible.sortedByDescending(addedOf).take(RECENT_LIMIT) else visible.take(RECENT_LIMIT)
         else -> visible

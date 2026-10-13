@@ -89,6 +89,23 @@ class LocalStore(private val prefs: SharedPreferences) {
         prefs.edit().putString(scoped("pos"), o.toString()).apply()
     }
 
+    /** Dernier épisode lancé pour chaque série (clé de reprise "ep:<id>"). */
+    fun lastEpisode(seriesId: String): String? =
+        readObject(scoped("lastEp")).optString(seriesId, "").ifEmpty { null }
+
+    fun setLastEpisode(seriesId: String, episodeKey: String) {
+        val o = readObject(scoped("lastEp"))
+        o.put(seriesId, episodeKey)
+        prefs.edit().putString(scoped("lastEp"), o.toString()).apply()
+    }
+
+    /** Films commencés et séries entamées, du plus récent au plus ancien. */
+    fun inProgress(type: ContentType): List<String> = when (type) {
+        ContentType.MOVIE -> history(type).filter { position("movie:$it") > 0 }
+        ContentType.SERIES -> history(type).filter { lastEpisode(it) != null }
+        else -> emptyList()
+    }
+
     // --- Contrôle parental -------------------------------------------------------------------
 
     var parentalPin: String

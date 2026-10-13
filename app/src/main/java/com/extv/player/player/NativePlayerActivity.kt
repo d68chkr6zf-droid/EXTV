@@ -71,6 +71,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.extv.player.App
+import com.extv.player.data.ContentType
 import com.extv.player.ui.C
 import com.extv.player.ui.ExtvTheme
 import com.extv.player.ui.FocusTile
@@ -253,7 +254,10 @@ class NativePlayerActivity : ComponentActivity() {
             else -> 0L
         }
         items[index] = item.copy(startAtMs = null)
-        if (item.historyType != null && item.historyId != null) store.addHistory(item.historyType, item.historyId)
+        if (item.historyType != null && item.historyId != null) {
+            store.addHistory(item.historyType, item.historyId)
+            if (item.historyType == ContentType.SERIES && item.resumeKey != null) store.setLastEpisode(item.historyId, item.resumeKey)
+        }
 
         p.setMediaItem(MediaItem.fromUri(item.url), start)
         p.prepare()
