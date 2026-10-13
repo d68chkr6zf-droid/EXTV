@@ -212,9 +212,10 @@ class NativePlayerActivity : ComponentActivity() {
             if (k < 1 || k > 4) return null
             return if (Math.abs(ratio - k) < 0.012f * k) k.toFloat() else null
         }
-        val best = candidates
-            .mapNotNull { mode -> score(mode.refreshRate)?.let { mode to it } }
-            .minByOrNull { it.second }?.first ?: return
+        // On évite les modes très lents (25/30 Hz : scintillement, mouvement haché) : 25 img/s → 50 Hz.
+        val matching = candidates.mapNotNull { mode -> score(mode.refreshRate)?.let { mode to it } }
+        val best = (matching.filter { it.first.refreshRate >= 47f }.minByOrNull { it.second }
+            ?: matching.maxByOrNull { it.first.refreshRate })?.first ?: return
         if (best.modeId == current.modeId) return
         window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
     }
