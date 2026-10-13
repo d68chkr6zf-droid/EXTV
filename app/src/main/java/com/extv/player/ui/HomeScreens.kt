@@ -275,6 +275,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
         ContentType.values().forEach { if (statuses[it] == null) load(it) }
     }
 
+    fun isLoading(type: ContentType) = statuses[type]?.loading != false
+
     fun statusText(type: ContentType, unit: String): String {
         val s = statuses[type] ?: return "Chargement…"
         return when {
@@ -286,15 +288,15 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
 
     val live: @Composable (Modifier) -> Unit = { m ->
         MainTile("TV en direct", R.drawable.ic_live, C.LiveGradient, statusText(ContentType.LIVE, "chaînes"), m, first,
-            onRefresh = { load(ContentType.LIVE, true) }) { onNavigate(Routes.LIVE) }
+            loading = isLoading(ContentType.LIVE), onRefresh = { load(ContentType.LIVE, true) }) { onNavigate(Routes.LIVE) }
     }
     val movies: @Composable (Modifier) -> Unit = { m ->
         MainTile("Films", R.drawable.ic_movie, C.MoviesGradient, statusText(ContentType.MOVIE, "films"), m,
-            onRefresh = { load(ContentType.MOVIE, true) }) { onNavigate(Routes.MOVIES) }
+            loading = isLoading(ContentType.MOVIE), onRefresh = { load(ContentType.MOVIE, true) }) { onNavigate(Routes.MOVIES) }
     }
     val series: @Composable (Modifier) -> Unit = { m ->
         MainTile("Séries", R.drawable.ic_series, C.SeriesGradient, statusText(ContentType.SERIES, "séries"), m,
-            onRefresh = { load(ContentType.SERIES, true) }) { onNavigate(Routes.SERIES) }
+            loading = isLoading(ContentType.SERIES), onRefresh = { load(ContentType.SERIES, true) }) { onNavigate(Routes.SERIES) }
     }
     val smallTiles: @Composable (Modifier) -> Unit = { m ->
         SmallTile("Favoris TV", R.drawable.ic_fav_tv, m) { onNavigate(Routes.FAV_TV) }
@@ -478,13 +480,16 @@ private fun MainTile(
     status: String,
     modifier: Modifier,
     focusRequester: FocusRequester? = null,
+    loading: Boolean = false,
     onRefresh: () -> Unit,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(18.dp)
-    Column(modifier.clip(shape).background(Brush.linearGradient(gradient))) {
+    // Pendant le chargement : tuile grisée et inactive, pour ne pas ouvrir une liste encore vide.
+    val colors = if (loading) listOf(Color(0xFF4A4A50), Color(0xFF2E2E33)) else gradient
+    Column(modifier.clip(shape).background(Brush.linearGradient(colors))) {
         FocusTile(
-            onClick = onClick,
+            onClick = { if (!loading) onClick() },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             focusRequester = focusRequester,
             shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
@@ -493,6 +498,14 @@ private fun MainTile(
             focusScale = 1f,
         ) {
             TileLabel(title, icon)
+            if (loading) {
+                Box(Modifier.matchParentSize().background(Color(0x99000000)), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.material3.CircularProgressIndicator(color = C.Accent, modifier = Modifier.size(42.dp))
+                        Text("Chargement en cours…", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 10.dp))
+                    }
+                }
+            }
         }
         Row(
             Modifier.fillMaxWidth().background(Color(0x40000000)).padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
