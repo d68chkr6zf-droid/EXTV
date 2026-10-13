@@ -117,9 +117,9 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getInt("caching", 20000)
         set(value) = prefs.edit().putInt("caching", value).apply()
 
-    /** Moteur de lecture plein écran : "vlc" (par défaut) ou "native" (lecteur Android, ExoPlayer). */
+    /** Moteur de lecture plein écran : "native" (lecteur Android, ExoPlayer, par défaut) ou "vlc". */
     var playerEngine: String
-        get() = prefs.getString("engine", "vlc") ?: "vlc"
+        get() = prefs.getString("engine", "native") ?: "native"
         set(value) = prefs.edit().putString("engine", value).apply()
 
     /** Sortie audio libVLC : "android_audiotrack" (par défaut) ou "opensles" (si pas de son sur certains contenus). */
@@ -133,7 +133,7 @@ class LocalStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putString("liveFormat", value).apply()
 
     var userAgent: String
-        get() = prefs.getString("ua", USER_AGENTS.first()) ?: USER_AGENTS.first()
+        get() = prefs.getString("ua", DEFAULT_USER_AGENT) ?: DEFAULT_USER_AGENT
         set(value) = prefs.edit().putString("ua", value).apply()
 
     // --- Utilitaires JSON --------------------------------------------------------------------
@@ -161,6 +161,8 @@ class LocalStore(private val prefs: SharedPreferences) {
             "Mozilla/5.0 (Linux; Android 12; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
             "okhttp/4.12.0",
         )
+        /** Agent « Linux » (Android TV) par défaut. */
+        val DEFAULT_USER_AGENT = USER_AGENTS[1]
         val CACHING_VALUES = listOf(1000, 2000, 3000, 5000, 8000, 10000, 12000, 16000, 20000, 30000)
     }
 }
