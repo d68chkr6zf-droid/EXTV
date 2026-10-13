@@ -27,6 +27,9 @@ interface IptvRepository {
     suspend fun catchup(channel: LiveChannel): List<EpgProgram>
     fun catchupUrl(channel: LiveChannel, program: EpgProgram): String?
 
+    /** Adresse du replay démarrant offsetMs après le début de l'émission (null si non géré). */
+    fun catchupUrlAt(channel: LiveChannel, program: EpgProgram, offsetMs: Long): String? = null
+
     suspend fun accountInfo(): AccountInfo?
 
     suspend fun search(query: String): SearchResults

@@ -171,16 +171,29 @@ class PlayerActivity : ComponentActivity() {
 
     // --- Lecture -----------------------------------------------------------------------------
 
-    private fun playCurrent() {
+    /** Replay : position (dans l'émission) où démarre le flux en cours, et cible d'avance rapide en attente. */
+    private var baseOffset = 0L
+    private var pendingTarget by mutableStateOf<Long?>(null)
+    private val applyReplaySeek = Runnable {
+        val target = pendingTarget ?: return@Runnable
+        pendingTarget = null
+        playCurrent(target / 60_000 * 60_000)
+    }
+
+    private fun playCurrent(offset: Long = 0L) {
         handler.removeCallbacks(retryLive)
+        handler.removeCallbacks(applyReplaySeek)
+        pendingTarget = null
         val item = items.getOrNull(index) ?: return
         frenchChosen = false
         errorText = null
-        timeMs = 0
-        lengthMs = 0
+        baseOffset = if (item.replayUrlAt != null) offset else 0L
+        timeMs = baseOffset
+        lengthMs = item.durationMs ?: 0
         isBuffering = true
 
-        val media = Media(libVlc, Uri.parse(item.url))
+        val url = if (item.replayUrlAt != null && baseOffset > 0) item.replayUrlAt.invoke(baseOffset) else item.url
+        val media = Media(libVlc, Uri.parse(url))
         media.setHWDecoderEnabled(store.hwDecoding, false)
         media.addOption(":http-user-agent=${store.userAgent}")
         mediaPlayer.setMedia(media)
@@ -224,8 +237,8 @@ class PlayerActivity : ComponentActivity() {
                 bufferPercent = e.buffering
                 isBuffering = e.buffering < 100f
             }
-            MediaPlayer.Event.TimeChanged -> timeMs = e.timeChanged
-            MediaPlayer.Event.LengthChanged -> lengthMs = e.lengthChanged
+            MediaPlayer.Event.TimeChanged -> if (pendingTarget == null) timeMs = baseOffset + e.timeChanged
+            MediaPlayer.Event.LengthChanged -> lengthMs = items.getOrNull(index)?.durationMs ?: e.lengthChanged
             MediaPlayer.Event.EndReached -> handler.post { onEnd() }
             MediaPlayer.Event.EncounteredError -> {
                 isBuffering = false
@@ -285,6 +298,19 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun seekBy(delta: Long) {
+        if (!live && items.getOrNull(index)?.replayUrlAt != null && lengthMs > 0) {
+            // Replay : on cumule les appuis puis on relance le flux à la nouvelle heure.
+            // Pas d'une minute (5 min en maintenant la touche), le serveur ne gérant que des minutes entières.
+            val step = (if (kotlin.math.abs(delta) >= 30_000) 300_000L else 60_000L) * (if (delta < 0) -1 else 1)
+            val from = pendingTarget ?: (timeMs / 60_000 * 60_000)
+            val target = (from + step).coerceIn(0L, (lengthMs - 60_000).coerceAtLeast(0L))
+            pendingTarget = target
+            timeMs = target
+            handler.removeCallbacks(applyReplaySeek)
+            handler.postDelayed(applyReplaySeek, 900)
+            showOverlay()
+            return
+        }
         if (live || lengthMs <= 0) {
             showOverlay()
             return
@@ -417,7 +443,12 @@ class PlayerActivity : ComponentActivity() {
                         Text(formatDuration(timeMs), color = Color.White)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            if (isPlaying) "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  MENU : options" else "En pause",
+                            when {
+                                pendingTarget != null -> "Reprise à ${formatDuration(timeMs)}…"
+                                !isPlaying -> "En pause"
+                                items.getOrNull(index)?.replayUrlAt != null -> "OK : pause  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  MENU : options"
+                                else -> "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  MENU : options"
+                            },
                             color = C.TextDim,
                             fontSize = 14.sp,
                         )

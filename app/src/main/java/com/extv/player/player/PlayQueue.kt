@@ -16,6 +16,13 @@ data class PlayItem(
     /** Pour l'historique « Récemment regardé ». */
     val historyType: ContentType? = null,
     val historyId: String? = null,
+    /**
+     * Replay : adresse de l'émission démarrant à offsetMs. Les serveurs de replay ne permettent pas
+     * d'avancer dans le flux, on relance donc la lecture à partir de la nouvelle heure.
+     */
+    val replayUrlAt: ((Long) -> String)? = null,
+    /** Durée de l'émission (replay), pour la barre de progression. */
+    val durationMs: Long? = null,
 )
 
 /**

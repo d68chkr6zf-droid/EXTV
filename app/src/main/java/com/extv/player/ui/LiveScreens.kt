@@ -455,7 +455,15 @@ fun CatchupScreen() {
                         FocusTile(
                             onClick = {
                                 val url = repo.catchupUrl(channel, p) ?: return@FocusTile
-                                PlayQueue.start(context, listOf(PlayItem(url, "${channel.name} · ${p.title}", startAtMs = 0)), 0, live = false)
+                                val seekable = repo.catchupUrlAt(channel, p, 0) != null
+                                val item = PlayItem(
+                                    url,
+                                    "${channel.name} · ${p.title}",
+                                    startAtMs = 0,
+                                    replayUrlAt = if (seekable) { offset -> repo.catchupUrlAt(channel, p, offset) ?: url } else null,
+                                    durationMs = (p.end - p.start).takeIf { seekable && it > 0 },
+                                )
+                                PlayQueue.start(context, listOf(item), 0, live = false)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             focusRequester = if (i == 0) first else null,

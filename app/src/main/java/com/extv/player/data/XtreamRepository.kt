@@ -271,12 +271,23 @@ class XtreamRepository(
             .reversed()
     }
 
-    override fun catchupUrl(channel: LiveChannel, program: EpgProgram): String {
-        val minutes = ((program.end - program.start) / 60_000).coerceAtLeast(1)
+    override fun catchupUrl(channel: LiveChannel, program: EpgProgram): String = catchupUrlAt(channel, program, 0)
+
+    override fun catchupUrlAt(channel: LiveChannel, program: EpgProgram, offsetMs: Long): String {
+        // Le serveur travaille à la minute : on démarre à la minute entière la plus proche.
+        val offsetMin = (offsetMs / 60_000).coerceAtLeast(0)
+        val minutes = ((program.end - program.start) / 60_000 - offsetMin).coerceAtLeast(1)
         // Le serveur attend son heure locale au format yyyy-MM-dd:HH-mm.
+        val out = SimpleDateFormat("yyyy-MM-dd:HH-mm", Locale.US)
         val start = program.startRaw?.takeIf { it.length >= 16 }?.let { raw ->
-            raw.substring(0, 10) + ":" + raw.substring(11, 16).replace(':', '-')
-        } ?: SimpleDateFormat("yyyy-MM-dd:HH-mm", Locale.US).format(Date(program.start))
+            // Heure du serveur sans fuseau : calcul en UTC pour seulement ajouter des minutes.
+            val utc = java.util.TimeZone.getTimeZone("UTC")
+            val parsed = runCatching {
+                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = utc }.parse(raw.substring(0, 10) + " " + raw.substring(11, 16))
+            }.getOrNull() ?: return@let null
+            out.timeZone = utc
+            out.format(Date(parsed.time + offsetMin * 60_000))
+        } ?: out.format(Date(program.start + offsetMin * 60_000))
         return "$base/timeshift/$user/$pass/$minutes/$start/${channel.id}.ts"
     }
 

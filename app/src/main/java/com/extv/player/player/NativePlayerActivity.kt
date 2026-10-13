@@ -110,9 +110,10 @@ class NativePlayerActivity : ComponentActivity() {
     private val tick = object : Runnable {
         override fun run() {
             player?.let {
-                timeMs = it.currentPosition.coerceAtLeast(0L)
+                val replay = items.getOrNull(index)?.durationMs
+                if (pendingTarget == null) timeMs = baseOffset + it.currentPosition.coerceAtLeast(0L)
                 val d = it.duration
-                lengthMs = if (d == MC.TIME_UNSET || d < 0) 0L else d
+                lengthMs = replay ?: if (d == MC.TIME_UNSET || d < 0) 0L else d
             }
             handler.postDelayed(this, 500)
         }
@@ -238,13 +239,25 @@ class NativePlayerActivity : ComponentActivity() {
 
     // --- Lecture -----------------------------------------------------------------------------
 
-    private fun playCurrent() {
+    /** Replay : position (dans l'émission) où démarre le flux en cours, et cible d'avance rapide en attente. */
+    private var baseOffset = 0L
+    private var pendingTarget by mutableStateOf<Long?>(null)
+    private val applyReplaySeek = Runnable {
+        val target = pendingTarget ?: return@Runnable
+        pendingTarget = null
+        playCurrent(target / 60_000 * 60_000)
+    }
+
+    private fun playCurrent(offset: Long = 0L) {
         handler.removeCallbacks(retryLive)
+        handler.removeCallbacks(applyReplaySeek)
+        pendingTarget = null
         val p = player ?: return
         val item = items.getOrNull(index) ?: return
         errorText = null
-        timeMs = 0
-        lengthMs = 0
+        baseOffset = if (item.replayUrlAt != null) offset else 0L
+        timeMs = baseOffset
+        lengthMs = item.durationMs ?: 0
         isBuffering = true
 
         val start = when {
@@ -259,7 +272,8 @@ class NativePlayerActivity : ComponentActivity() {
             if (item.historyType == ContentType.SERIES && item.resumeKey != null) store.setLastEpisode(item.historyId, item.resumeKey)
         }
 
-        p.setMediaItem(MediaItem.fromUri(item.url), start)
+        val url = if (item.replayUrlAt != null && baseOffset > 0) item.replayUrlAt.invoke(baseOffset) else item.url
+        p.setMediaItem(MediaItem.fromUri(url), if (item.replayUrlAt != null) 0L else start)
         p.prepare()
         p.playWhenReady = true
         showOverlay()
@@ -296,6 +310,19 @@ class NativePlayerActivity : ComponentActivity() {
 
     private fun seekBy(delta: Long) {
         val p = player
+        if (p != null && !live && items.getOrNull(index)?.replayUrlAt != null && lengthMs > 0) {
+            // Replay : on cumule les appuis puis on relance le flux à la nouvelle heure.
+            // Pas d'une minute (5 min en maintenant la touche), le serveur ne gérant que des minutes entières.
+            val step = (if (kotlin.math.abs(delta) >= 30_000) 300_000L else 60_000L) * (if (delta < 0) -1 else 1)
+            val from = pendingTarget ?: (timeMs / 60_000 * 60_000)
+            val target = (from + step).coerceIn(0L, (lengthMs - 60_000).coerceAtLeast(0L))
+            pendingTarget = target
+            timeMs = target
+            handler.removeCallbacks(applyReplaySeek)
+            handler.postDelayed(applyReplaySeek, 900)
+            showOverlay()
+            return
+        }
         if (p == null || live || lengthMs <= 0) {
             showOverlay()
             return
@@ -458,7 +485,12 @@ class NativePlayerActivity : ComponentActivity() {
                         Text(formatDuration(timeMs), color = Color.White)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            if (isPlaying) "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  MENU : options" else "En pause",
+                            when {
+                                pendingTarget != null -> "Reprise à ${formatDuration(timeMs)}…"
+                                !isPlaying -> "En pause"
+                                items.getOrNull(index)?.replayUrlAt != null -> "OK : pause  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  MENU : options"
+                                else -> "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  MENU : options"
+                            },
                             color = C.TextDim,
                             fontSize = 14.sp,
                         )
