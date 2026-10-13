@@ -373,6 +373,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     }
 
     val expiration = account.value?.expDate?.let { "Abonnement valable jusqu'au ${formatLongDate(it)}" }
+    account.value?.expDate?.let { ExpiryWarning(it) }
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
         TopBar(
@@ -581,4 +582,51 @@ private fun StarArrowButton(up: Boolean, description: String, size: androidx.com
             )
         }
     }
+}
+
+/** Avertissement affiché une fois par lancement quand l'abonnement se termine dans moins de [EXPIRY_WARNING_DAYS] jours. */
+private const val EXPIRY_WARNING_DAYS = 7
+private var expiryWarningShown = false
+
+@Composable
+private fun ExpiryWarning(expDate: Long) {
+    val daysLeft = ((expDate - System.currentTimeMillis()) / 86_400_000L).toInt()
+    var visible by remember { mutableStateOf(!expiryWarningShown && daysLeft in 0 until EXPIRY_WARNING_DAYS) }
+    if (!visible) return
+    val ok = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { ok.requestFocus() } }
+    fun close() {
+        expiryWarningShown = true
+        visible = false
+    }
+    val remaining = when (daysLeft) {
+        0 -> "aujourd'hui"
+        1 -> "demain"
+        else -> "dans $daysLeft jours"
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { close() },
+        containerColor = C.Surface2,
+        title = {
+            Text(
+                "⚠️ ATTENTION ⚠️",
+                Modifier.fillMaxWidth(),
+                color = C.Accent,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        },
+        text = {
+            Text(
+                "Votre abonnement arrive à terme $remaining (le ${formatLongDate(expDate)}).\n\n" +
+                    "Prenez les devants, vous ne perdez pas de jours : votre date anniversaire reste inchangée.",
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { close() }, modifier = Modifier.focusRequester(ok)) {
+                Text("OK", color = C.Accent, fontWeight = FontWeight.Bold)
+            }
+        },
+    )
 }
