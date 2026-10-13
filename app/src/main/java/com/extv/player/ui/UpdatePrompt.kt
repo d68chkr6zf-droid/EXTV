@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 /** Version pour laquelle l'utilisateur a choisi « Plus tard » (on ne la repropose pas avant le prochain lancement). */
 private var postponedVersion = 0
 
-/** Intervalle entre deux vérifications tant que l'accueil est affiché. */
+/** Intervalle entre deux vérifications tant que l'appli est ouverte. */
 private const val CHECK_EVERY_MS = 60_000L
 
 /**
@@ -44,8 +44,8 @@ fun UpdatePrompt() {
     var progress by remember { mutableStateOf<Float?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    // Vérifie à l'ouverture de l'accueil puis toutes les minutes, seulement quand l'accueil est à l'écran
-    // (jamais pendant la lecture d'une vidéo).
+    // Vérifie à l'ouverture puis toutes les minutes tant que l'appli est ouverte. Pendant la lecture d'une
+    // vidéo (écran du lecteur), on attend le retour dans l'appli pour ne pas interrompre le film.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
