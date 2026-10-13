@@ -68,6 +68,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.extv.player.App
@@ -117,6 +118,65 @@ class NativePlayerActivity : ComponentActivity() {
             }
             handler.postDelayed(this, 500)
         }
+    }
+
+    // --- Fréquence d'affichage calée sur la vidéo (50 Hz pour le sport européen, 60 Hz sinon) -------------
+    // Une vidéo à 25/50 images/s sur un écran à 60 Hz donne des saccades régulières (surtout en sport).
+    @Volatile private var rateMatched = false
+    private var firstPtsUs = -1L
+    private var lastPtsUs = -1L
+    private var frameCount = 0
+
+    private val frameListener = VideoFrameMetadataListener { ptsUs, _, format, _ ->
+        if (rateMatched) return@VideoFrameMetadataListener
+        if (format.frameRate > 0f) {
+            rateMatched = true
+            handler.post { matchRefreshRate(format.frameRate) }
+            return@VideoFrameMetadataListener
+        }
+        // Débit d'images non indiqué dans le flux (fréquent en direct) : on le mesure sur 60 images.
+        if (firstPtsUs < 0 || ptsUs <= lastPtsUs) {
+            firstPtsUs = ptsUs
+            frameCount = 0
+        } else {
+            frameCount++
+        }
+        lastPtsUs = ptsUs
+        if (frameCount >= 60 && ptsUs > firstPtsUs) {
+            rateMatched = true
+            val fps = frameCount * 1_000_000f / (ptsUs - firstPtsUs)
+            handler.post { matchRefreshRate(fps) }
+        }
+    }
+
+    private fun resetRateMatch() {
+        firstPtsUs = -1L
+        lastPtsUs = -1L
+        frameCount = 0
+        rateMatched = !store.matchFrameRate
+    }
+
+    /** Choisit, à résolution égale, le mode d'écran dont la fréquence est un multiple du débit de la vidéo. */
+    private fun matchRefreshRate(fps: Float) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return
+        if (fps < 10f || fps > 121f || isFinishing) return
+        @Suppress("DEPRECATION")
+        val display = window.decorView.display ?: windowManager.defaultDisplay ?: return
+        val current = display.mode
+        val candidates = display.supportedModes.filter {
+            it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight
+        }
+        fun score(rate: Float): Float? {
+            val ratio = rate / fps
+            val k = Math.round(ratio)
+            if (k < 1 || k > 4) return null
+            return if (Math.abs(ratio - k) < 0.012f * k) k.toFloat() else null
+        }
+        val best = candidates
+            .mapNotNull { mode -> score(mode.refreshRate)?.let { mode to it } }
+            .minByOrNull { it.second }?.first ?: return
+        if (best.modeId == current.modeId) return
+        window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -206,6 +266,7 @@ class NativePlayerActivity : ComponentActivity() {
                     .setPreferredAudioLanguages("fr", "fre", "fra")
                     .build()
                 addListener(listener)
+                setVideoFrameMetadataListener(frameListener)
             }
     }
 
@@ -254,6 +315,7 @@ class NativePlayerActivity : ComponentActivity() {
         pendingTarget = null
         val p = player ?: return
         val item = items.getOrNull(index) ?: return
+        resetRateMatch()
         errorText = null
         baseOffset = if (item.replayUrlAt != null) offset else 0L
         timeMs = baseOffset

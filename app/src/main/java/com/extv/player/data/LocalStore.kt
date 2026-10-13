@@ -140,6 +140,11 @@ class LocalStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putInt("overscan", value).apply()
 
     /** Moteur de lecture plein écran : "native" (lecteur Android, ExoPlayer, par défaut) ou "vlc". */
+    /** Lecteur natif : caler la fréquence de l'écran (50/60 Hz) sur celle de la vidéo. */
+    var matchFrameRate: Boolean
+        get() = prefs.getBoolean("match_fps", true)
+        set(value) = prefs.edit().putBoolean("match_fps", value).apply()
+
     var playerEngine: String
         get() = prefs.getString("engine", "native") ?: "native"
         set(value) = prefs.edit().putString("engine", value).apply()

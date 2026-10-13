@@ -283,6 +283,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 store.playerEngine = if (store.playerEngine == "native") "vlc" else "native"
                 changed()
             }
+            SettingRow("Fréquence d'écran adaptée (50/60 Hz, natif)", if (store.matchFrameRate) "Activé" else "Désactivé") {
+                store.matchFrameRate = !store.matchFrameRate
+                changed()
+            }
             SettingRow("Décodage matériel (VLC)", if (store.hwDecoding) "Activé" else "Désactivé") {
                 store.hwDecoding = !store.hwDecoding
                 changed()
