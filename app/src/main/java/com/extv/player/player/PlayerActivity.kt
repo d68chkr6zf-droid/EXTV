@@ -196,6 +196,13 @@ class PlayerActivity : ComponentActivity() {
         val media = Media(libVlc, Uri.parse(url))
         media.setHWDecoderEnabled(store.hwDecoding, false)
         media.addOption(":http-user-agent=${store.userAgent}")
+        if (store.deinterlace) {
+            // Flux entrelacés (1080i) : on reconstitue 50 images/s à partir des 2 trames de chaque image.
+            // Le décodage matériel doit alors rendre les images à VLC au lieu de les afficher directement.
+            media.addOption(":no-mediacodec-dr")
+            media.addOption(":deinterlace=-1")
+            media.addOption(":deinterlace-mode=yadif2x")
+        }
         mediaPlayer.setMedia(media)
         media.release()
 

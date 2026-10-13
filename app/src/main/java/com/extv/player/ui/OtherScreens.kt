@@ -291,6 +291,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 store.hwDecoding = !store.hwDecoding
                 changed()
             }
+            SettingRow("Désentrelacement (VLC, sport)", if (store.deinterlace) "Activé" else "Désactivé") {
+                store.deinterlace = !store.deinterlace
+                changed()
+            }
             SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
                 store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
                 changed()

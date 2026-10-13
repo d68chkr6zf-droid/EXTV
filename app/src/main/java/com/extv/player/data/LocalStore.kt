@@ -140,6 +140,11 @@ class LocalStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putInt("overscan", value).apply()
 
     /** Moteur de lecture plein écran : "native" (lecteur Android, ExoPlayer, par défaut) ou "vlc". */
+    /** VLC : désentrelacement (yadif 2x) pour les chaînes en 1080i, sport surtout. */
+    var deinterlace: Boolean
+        get() = prefs.getBoolean("deinterlace", false)
+        set(value) = prefs.edit().putBoolean("deinterlace", value).apply()
+
     /** Lecteur natif : caler la fréquence de l'écran (50/60 Hz) sur celle de la vidéo. */
     var matchFrameRate: Boolean
         get() = prefs.getBoolean("match_fps", true)
