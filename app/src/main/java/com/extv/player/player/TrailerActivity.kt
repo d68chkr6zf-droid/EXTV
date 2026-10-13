@@ -13,6 +13,8 @@ import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 /**
  * Lecture d'une bande-annonce dans l'appli, avec le lecteur YouTube intégrable officiel
@@ -43,6 +45,12 @@ class TrailerActivity : ComponentActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             webChromeClient = WebChromeClient()
             webViewClient = WebViewClient()
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+        }
+        // YouTube choisit par défaut VP9 ou AV1, souvent décodés par le processeur sur les TV (saccades).
+        // On les déclare non pris en charge pour obtenir du H.264, décodé par la puce vidéo.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            runCatching { WebViewCompat.addDocumentStartJavaScript(view, FORCE_H264, setOf("*")) }
         }
         web = view
         setContentView(view)
@@ -82,6 +90,24 @@ class TrailerActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_TRAILER = "trailer"
+
+        private const val FORCE_H264 = """
+            (function () {
+              var blocked = /av01|vp0?9|vp8/i;
+              function wrap(obj) {
+                if (!obj || !obj.isTypeSupported) return;
+                var original = obj.isTypeSupported.bind(obj);
+                obj.isTypeSupported = function (t) { return blocked.test(t || '') ? false : original(t); };
+              }
+              wrap(window.MediaSource);
+              wrap(window.ManagedMediaSource);
+              wrap(window.WebKitMediaSource);
+              if (window.HTMLMediaElement) {
+                var canPlay = HTMLMediaElement.prototype.canPlayType;
+                HTMLMediaElement.prototype.canPlayType = function (t) { return blocked.test(t || '') ? '' : canPlay.call(this, t); };
+              }
+            })();
+        """
 
         fun youtubeId(trailer: String): String? {
             val t = trailer.trim()
