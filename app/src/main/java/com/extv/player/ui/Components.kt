@@ -143,9 +143,9 @@ fun ExtvTheme(background: Boolean = true, content: @Composable () -> Unit) {
 // --- Adaptation à l'écran : smartphone, tablette, téléviseur ----------------------------------
 
 /** Valeur courante du réglage « Cadrage de l'écran », observée par l'interface. */
-val overscanSetting by lazy { mutableIntStateOf(runCatching { App.instance.store.overscan }.getOrDefault(-1)) }
+val overscanSetting by lazy { mutableIntStateOf(runCatching { App.instance.store.overscan }.getOrDefault(0)) }
 
-val OVERSCAN_VALUES = listOf(-1, 0, 2, 4, 6, 8, 10)
+val OVERSCAN_VALUES = listOf(0, 2, 4, 6, 8, 10, -1)
 
 /** Marge de sécurité en % : réglage choisi, ou 5 % sur TV en automatique. */
 @Composable

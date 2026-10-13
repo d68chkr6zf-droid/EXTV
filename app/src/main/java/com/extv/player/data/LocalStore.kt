@@ -134,9 +134,9 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getInt("caching", 20000)
         set(value) = prefs.edit().putInt("caching", value).apply()
 
-    /** Marge de sécurité autour de l'interface, en % de l'écran (-1 = automatique : 5 % sur TV, 0 ailleurs). */
+    /** Marge de sécurité autour de l'interface, en % de l'écran (0 par défaut ; -1 = automatique : 5 % sur TV). */
     var overscan: Int
-        get() = prefs.getInt("overscan", -1)
+        get() = prefs.getInt("overscan", 0)
         set(value) = prefs.edit().putInt("overscan", value).apply()
 
     /** Moteur de lecture plein écran : "native" (lecteur Android, ExoPlayer, par défaut) ou "vlc". */
