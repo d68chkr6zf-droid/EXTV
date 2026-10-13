@@ -161,13 +161,12 @@ private fun <T> CatalogScreen(
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucun résultat dans TOUT" else "Aucun contenu", color = C.TextDim) }
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Adaptive(
-                                    when (size) {
-                                        WindowSize.Compact -> 104.dp
-                                        WindowSize.Medium -> 130.dp
-                                        WindowSize.Expanded -> 150.dp
-                                    },
-                                ),
+                                // TV : lignes de 4 affiches ; smartphone et tablette : selon la largeur.
+                                columns = when (size) {
+                                    WindowSize.Compact -> GridCells.Adaptive(104.dp)
+                                    WindowSize.Medium -> GridCells.Adaptive(130.dp)
+                                    WindowSize.Expanded -> GridCells.Fixed(4)
+                                },
                                 contentPadding = PaddingValues(6.dp),
                                 horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),

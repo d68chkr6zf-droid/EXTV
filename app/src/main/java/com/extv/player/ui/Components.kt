@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -125,7 +126,13 @@ fun ExtvTheme(background: Boolean = true, content: @Composable () -> Unit) {
                     Modifier.fillMaxSize()
                         .background(Brush.verticalGradient(listOf(C.BgTop, C.Bg, Color(0xFF060508))))
                         .systemBarsPadding(),
-                ) { content() }
+                ) {
+                    // Certains téléviseurs coupent les bords de l'image (surbalayage) : marge de sécurité.
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val pct = effectiveOverscan() / 100f
+                        Box(Modifier.fillMaxSize().padding(horizontal = maxWidth * pct, vertical = maxHeight * pct)) { content() }
+                    }
+                }
             } else {
                 content()
             }
@@ -134,6 +141,21 @@ fun ExtvTheme(background: Boolean = true, content: @Composable () -> Unit) {
 }
 
 // --- Adaptation à l'écran : smartphone, tablette, téléviseur ----------------------------------
+
+/** Valeur courante du réglage « Cadrage de l'écran », observée par l'interface. */
+val overscanSetting by lazy { mutableIntStateOf(runCatching { App.instance.store.overscan }.getOrDefault(-1)) }
+
+val OVERSCAN_VALUES = listOf(-1, 0, 2, 4, 6, 8, 10)
+
+/** Marge de sécurité en % : réglage choisi, ou 5 % sur TV en automatique. */
+@Composable
+fun effectiveOverscan(): Int {
+    val value = overscanSetting.intValue
+    if (value >= 0) return value
+    val tv = (LocalConfiguration.current.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+        android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    return if (tv) 5 else 0
+}
 
 enum class WindowSize { Compact, Medium, Expanded }
 

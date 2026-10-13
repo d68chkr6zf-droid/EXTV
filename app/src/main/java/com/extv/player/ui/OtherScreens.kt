@@ -265,6 +265,12 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             Section("Application")
             SettingRow("Mise à jour (version ${Updater.currentVersion})", updateText) { checkUpdate() }
 
+            SettingRow("Cadrage de l'écran (bords coupés)", if (store.overscan < 0) "Automatique" else "Marge ${store.overscan} %") {
+                store.overscan = OVERSCAN_VALUES[(OVERSCAN_VALUES.indexOf(store.overscan) + 1).mod(OVERSCAN_VALUES.size)]
+                overscanSetting.intValue = store.overscan
+                changed()
+            }
+
             Section("Lecteur")
             SettingRow("Lecteur vidéo", if (store.playerEngine == "native") "Natif (Android)" else "VLC", first) {
                 store.playerEngine = if (store.playerEngine == "native") "vlc" else "native"
