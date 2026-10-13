@@ -275,6 +275,22 @@ class PlayerActivity : ComponentActivity() {
         if (mediaPlayer.volume <= 0) mediaPlayer.setVolume(100)
     }
 
+    /** Bouton « Épisode suivant » : affiché pendant les [NEXT_BUTTON_MS] dernières millisecondes d'un épisode. */
+    private val nextAvailable: Boolean
+        get() = !live && index < items.lastIndex && lengthMs > 0 && lengthMs - timeMs in 1..NEXT_BUTTON_MS
+
+    /** Épisode pour lequel l'utilisateur a choisi de regarder le générique (touche Retour). */
+    private var creditsFor by mutableIntStateOf(-1)
+    private val nextShown: Boolean get() = nextAvailable && creditsFor != index && !menuVisible
+
+    private fun playNext() {
+        items.getOrNull(index)?.resumeKey?.let { store.savePosition(it, 0) }
+        if (index < items.lastIndex) {
+            index++
+            playCurrent()
+        }
+    }
+
     private fun onEnd() {
         if (live) {
             // Un flux live qui s'arrête est en général une coupure : on relance.
@@ -349,6 +365,11 @@ class PlayerActivity : ComponentActivity() {
     // --- Télécommande ------------------------------------------------------------------------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (nextShown && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            // Comme Netflix : Retour masque le bouton et laisse défiler le générique.
+            if (event.action == KeyEvent.ACTION_UP) creditsFor = index
+            return true
+        }
         if (menuVisible) {
             if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_MENU) {
                 if (event.action == KeyEvent.ACTION_UP) menuVisible = false
@@ -362,7 +383,11 @@ class PlayerActivity : ComponentActivity() {
             val step = if (event.repeatCount > 4) 30_000L else 10_000L
             when (code) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
-                    if (!overlayVisible) showOverlay() else togglePause()
+                    when {
+                        nextShown -> playNext()
+                        !overlayVisible -> showOverlay()
+                        else -> togglePause()
+                    }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> togglePause()
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> seekBy(-step)
                 KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> seekBy(step)
@@ -464,6 +489,38 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
             }
+            if (nextShown) {
+                // Comme Netflix : compte à rebours de 10 s qui se remplit, puis l'épisode suivant démarre seul.
+                val next = items.getOrNull(index + 1)
+                var left by remember(index) { mutableIntStateOf(NEXT_COUNTDOWN_S) }
+                LaunchedEffect(index) {
+                    while (left > 0) {
+                        kotlinx.coroutines.delay(1000)
+                        if (isPlaying) left--
+                    }
+                    playNext()
+                }
+                val fill by androidx.compose.animation.core.animateFloatAsState(
+                    1f - left.toFloat() / NEXT_COUNTDOWN_S,
+                    animationSpec = androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing),
+                    label = "next",
+                )
+                Column(Modifier.align(Alignment.BottomEnd).padding(48.dp), horizontalAlignment = Alignment.End) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF6B6B6B))
+                            .clickable { playNext() },
+                    ) {
+                        Box(Modifier.matchParentSize().fillMaxWidth(fill).background(Color.White))
+                        Row(Modifier.padding(horizontal = 26.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("▶", color = Color.Black, fontSize = 20.sp)
+                            Text("Épisode suivant", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                    next?.title?.let { Text(it, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
+                    Text("OK : lancer maintenant  ·  Retour : regarder le générique", color = C.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
             if (menuVisible) OptionsMenu(Modifier.align(Alignment.CenterEnd))
         }
     }
@@ -524,6 +581,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val NEXT_BUTTON_MS = 60_000L
+        private const val NEXT_COUNTDOWN_S = 10
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
