@@ -225,6 +225,9 @@ private fun Field(
     focusRequester: FocusRequester? = null,
     onChange: (String) -> Unit,
 ) {
+    // Mot de passe : bouton « Afficher / Masquer » pour vérifier ce qui a été tapé.
+    var shown by remember { mutableStateOf(false) }
+    val hidden = secret && !shown
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -233,8 +236,18 @@ private fun Field(
         modifier = Modifier.fillMaxWidth().let { if (focusRequester != null) it.focusRequester(focusRequester) else it },
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.Accent, focusedLabelColor = C.Accent),
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (secret && shown) KeyboardType.Text else keyboard,
+            autoCorrectEnabled = !secret,
+        ),
+        visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
+        trailingIcon = if (secret) {
+            {
+                TextButton(onClick = { shown = !shown }) {
+                    Text(if (shown) "Masquer" else "Afficher", color = C.Accent, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        } else null,
     )
 }
 
