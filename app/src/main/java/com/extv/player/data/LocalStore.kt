@@ -151,7 +151,7 @@ class LocalStore(private val prefs: SharedPreferences) {
         set(value) = prefs.edit().putBoolean("match_fps", value).apply()
 
     var playerEngine: String
-        get() = prefs.getString("engine", "vlc") ?: "vlc"
+        get() = prefs.getString("engine", "native") ?: "native"
         set(value) = prefs.edit().putString("engine", value).apply()
 
     /** Sortie audio libVLC : "android_audiotrack" (par défaut) ou "opensles" (si pas de son sur certains contenus). */
