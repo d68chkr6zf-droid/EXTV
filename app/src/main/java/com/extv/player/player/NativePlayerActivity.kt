@@ -288,7 +288,7 @@ class NativePlayerActivity : ComponentActivity() {
         val caching = store.networkCaching
         val minBuffer = maxOf(caching, 15_000)
         val maxBuffer = maxOf(minBuffer * 2, 50_000)
-        val startBuffer = minOf(4_000, minBuffer)
+        val startBuffer = minOf(8_000, minBuffer)
         val rebuffer = minOf(maxOf(caching / 2, 5_000), minBuffer)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(minBuffer, maxBuffer, startBuffer, rebuffer)
