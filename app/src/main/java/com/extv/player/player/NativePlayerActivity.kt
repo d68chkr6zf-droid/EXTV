@@ -524,7 +524,7 @@ class NativePlayerActivity : ComponentActivity() {
             return true
         }
         if (menuVisible) {
-            if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_MENU || event.keyCode == KeyEvent.KEYCODE_INFO) {
                 if (event.action == KeyEvent.ACTION_UP) menuVisible = false
                 return true
             }
@@ -591,7 +591,7 @@ class NativePlayerActivity : ComponentActivity() {
                 ) {
                     Text(item?.title ?: "", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     if (live) {
-                        Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  MENU : options", color = C.TextDim, fontSize = 14.sp)
+                        Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  i : options", color = C.TextDim, fontSize = 14.sp)
                     }
                     if (techInfo.isNotEmpty()) Text(techInfo, color = C.TextDim, fontSize = 13.sp)
                 }
@@ -628,8 +628,8 @@ class NativePlayerActivity : ComponentActivity() {
                             when {
                                 pendingTarget != null -> "Reprise à ${formatDuration(timeMs)}…"
                                 !isPlaying -> "En pause"
-                                items.getOrNull(index)?.replayUrlAt != null -> "OK : pause  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  MENU : options"
-                                else -> "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  MENU : options"
+                                items.getOrNull(index)?.replayUrlAt != null -> "OK : pause  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  i : options"
+                                else -> "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  i : options"
                             },
                             color = C.TextDim,
                             fontSize = 14.sp,
