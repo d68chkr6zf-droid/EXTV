@@ -589,13 +589,23 @@ private fun SmallTile(label: String, icon: Int, modifier: Modifier, onClick: () 
 @Composable
 private fun StarArrowButton(up: Boolean, description: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     FocusTile(onClick = onClick, modifier = Modifier.size(size), shape = CircleShape, normalColor = C.Surface2, focusScale = 1.12f) { focused ->
-        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Star, contentDescription = description, tint = C.Accent, modifier = Modifier.size(size * 0.42f))
-            Icon(
-                if (up) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = if (focused) C.Text else C.Accent,
-                modifier = Modifier.size(size * 0.38f),
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Star, contentDescription = description, tint = C.Accent, modifier = Modifier.size(size * 0.34f))
+                Icon(
+                    if (up) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = if (focused) C.Text else C.Accent,
+                    modifier = Modifier.size(size * 0.30f),
+                )
+            }
+            // « Export » = sauvegarde des favoris, « Import » = récupération.
+            Text(
+                if (up) "Export" else "Import",
+                color = if (focused) C.Text else C.TextDim,
+                fontSize = (size.value * 0.19f).sp,
+                lineHeight = (size.value * 0.2f).sp,
+                maxLines = 1,
             )
         }
     }
