@@ -291,7 +291,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 store.hwDecoding = !store.hwDecoding
                 changed()
             }
-            SettingRow("Désentrelacement (VLC, sport)", if (store.deinterlace) "Activé" else "Désactivé") {
+            SettingRow("Mode sport", if (store.deinterlace) "Activé" else "Désactivé") {
                 store.deinterlace = !store.deinterlace
                 changed()
             }
