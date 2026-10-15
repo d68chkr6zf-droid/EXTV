@@ -1,7 +1,9 @@
 package com.extv.player.data
 
 import android.content.Context
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -98,7 +100,44 @@ object Updater {
     /** L'APK téléchargé est-il bien plus récent que la version installée ? */
     fun isNewer(context: Context, apk: File): Boolean = apkVersionCode(context, apk) > BuildConfig.VERSION_CODE
 
+    /** Message d'Android quand l'installation échoue ou est annulée (affiché par la fenêtre de mise à jour). */
+    val installFailed = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    /**
+     * Installe l'APK par une session PackageInstaller. Sur Android 12+, si EXTV a lui-même installé la
+     * version en place, Android accepte la mise à jour sans confirmation ; sinon il affiche « Installer ».
+     */
     fun install(context: Context, apk: File) {
+        installFailed.value = null
+        runCatching { installWithSession(context, apk) }.onFailure { installWithIntent(context, apk) }
+    }
+
+    private fun installWithSession(context: Context, apk: File) {
+        val installer = context.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(context.packageName)
+            setSize(apk.length())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        }
+        val id = installer.createSession(params)
+        installer.openSession(id).use { session ->
+            session.openWrite("EXTV.apk", 0, apk.length()).use { out ->
+                apk.inputStream().use { it.copyTo(out) }
+                session.fsync(out)
+            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+            val callback = PendingIntent.getBroadcast(
+                context,
+                id,
+                Intent(context, InstallReceiver::class.java).setAction("com.extv.player.INSTALL_RESULT"),
+                flags,
+            )
+            session.commit(callback.intentSender)
+        }
+    }
+
+    private fun installWithIntent(context: Context, apk: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", apk)
         @Suppress("DEPRECATION")
         val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)

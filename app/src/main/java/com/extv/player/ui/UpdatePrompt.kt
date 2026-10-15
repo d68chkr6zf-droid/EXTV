@@ -24,20 +24,12 @@ import androidx.compose.ui.unit.dp
 import com.extv.player.data.Updater
 import kotlinx.coroutines.launch
 
-/** Version pour laquelle l'utilisateur a choisi « Plus tard » (on ne la repropose pas avant le prochain lancement). */
-private var postponedVersion = 0
-
-/** Version dont l'installation vient d'être lancée, et à quel moment : on ne la repropose pas tout de suite. */
-private var installingVersion = 0
-private var installingSince = 0L
-private const val INSTALL_GRACE_MS = 5 * 60_000L
-
 /** Intervalle entre deux vérifications tant que l'appli est ouverte. */
 private const val CHECK_EVERY_MS = 60_000L
 
 /**
- * Au démarrage, si une nouvelle version est publiée, propose de l'installer :
- * OK télécharge puis ouvre l'installation, « Plus tard » ferme le message.
+ * Mise à jour obligatoire : dès qu'une nouvelle version est publiée, la fenêtre bloque l'appli,
+ * télécharge et installe tout de suite (sans clic sur Android 12+ quand c'est possible).
  */
 @Composable
 fun UpdatePrompt() {
@@ -59,9 +51,7 @@ fun UpdatePrompt() {
                 runCatching { Updater.check() }
                     .onSuccess { found ->
                         Updater.lastAutoCheck.value = if (found == null) "$time · à jour" else "$time · version ${found.versionName} trouvée"
-                        val installing = found?.versionCode == installingVersion &&
-                            System.currentTimeMillis() - installingSince < INSTALL_GRACE_MS
-                        if (found != null && found.versionCode != postponedVersion && !installing) release = found
+                        if (found != null) release = found
                     }
                     .onFailure { Updater.lastAutoCheck.value = "$time · échec (${it.javaClass.simpleName})" }
             }
@@ -71,10 +61,12 @@ fun UpdatePrompt() {
 
     val r = release ?: return
     val ok = remember { FocusRequester() }
-    LaunchedEffect(r) { runCatching { ok.requestFocus() } }
+    var installing by remember { mutableStateOf(false) }
+    val failed by Updater.installFailed
 
     fun update() {
         if (progress != null) return
+        installing = false
         if (!Updater.canInstall(context)) {
             message = "Autorisez EXTV à installer des applications, puis revenez et appuyez sur OK."
             Updater.openInstallPermission(context)
@@ -90,23 +82,35 @@ fun UpdatePrompt() {
                 !Updater.isNewer(context, apk) ->
                     message = "La version ${r.versionName} est encore en cours de publication. Réessayez dans 2 minutes."
                 else -> runCatching { Updater.install(context, apk) }
-                    .onSuccess {
-                        installingVersion = r.versionCode
-                        installingSince = System.currentTimeMillis()
-                        release = null
-                    }
+                    .onSuccess { installing = true }
                     .onFailure { message = "L'installation n'a pas pu s'ouvrir (${it.javaClass.simpleName}). Essayez Paramètres > Rechercher une mise à jour." }
             }
         }
     }
 
+    // Démarre tout seul ; au retour dans l'appli (installation annulée), on relance.
+    LaunchedEffect(r) {
+        runCatching { ok.requestFocus() }
+        update()
+    }
+    LaunchedEffect(failed) { if (failed != null) installing = false }
+    // Retour des réglages après avoir autorisé l'installation : on reprend tout seul.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        if (progress == null && !installing && Updater.canInstall(context) && message?.startsWith("Autorisez") == true) update()
+    }
+
     AlertDialog(
-        onDismissRequest = { if (progress == null) { postponedVersion = r.versionCode; release = null } },
+        onDismissRequest = {},
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
         containerColor = C.Surface2,
         title = { Text("Mise à jour disponible", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("La version ${r.versionName} d'EXTV est disponible. Vos favoris et réglages sont conservés.")
+                Text("La version ${r.versionName} d'EXTV est obligatoire. Elle s'installe maintenant, vos favoris et réglages sont conservés.")
+                if (installing && failed == null) {
+                    Text("Installation en cours… EXTV va redémarrer. Si Android le demande, choisissez « Installer ».", color = C.TextDim, modifier = Modifier.padding(top = 12.dp))
+                }
+                failed?.let { Text("L'installation n'a pas abouti ($it). Appuyez sur Réessayer.", color = C.Accent, modifier = Modifier.padding(top = 12.dp)) }
                 progress?.let {
                     LinearProgressIndicator(
                         progress = { it },
@@ -120,11 +124,8 @@ fun UpdatePrompt() {
         },
         confirmButton = {
             TextButton(onClick = { update() }, modifier = Modifier.focusRequester(ok)) {
-                Text("OK", color = C.Accent, fontWeight = FontWeight.Bold)
+                Text(if (progress != null) "Patientez…" else "Réessayer", color = C.Accent, fontWeight = FontWeight.Bold)
             }
-        },
-        dismissButton = {
-            if (progress == null) TextButton(onClick = { postponedVersion = r.versionCode; release = null }) { Text("Plus tard", color = C.TextDim) }
         },
     )
 }
