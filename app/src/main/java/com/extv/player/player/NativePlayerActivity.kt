@@ -772,7 +772,7 @@ class NativePlayerActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NEXT_BUTTON_MS = 5 * 60_000L
+        private const val NEXT_BUTTON_MS = 3 * 60_000L
         private val SCALES = listOf(
             AspectRatioFrameLayout.RESIZE_MODE_FIT to "Automatique",
             AspectRatioFrameLayout.RESIZE_MODE_FILL to "Ajuster à l'écran",

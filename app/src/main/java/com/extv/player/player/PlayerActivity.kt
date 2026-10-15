@@ -616,7 +616,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NEXT_BUTTON_MS = 5 * 60_000L
+        private const val NEXT_BUTTON_MS = 3 * 60_000L
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
