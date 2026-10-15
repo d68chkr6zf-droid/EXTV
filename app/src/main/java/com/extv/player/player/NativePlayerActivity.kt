@@ -125,6 +125,10 @@ class NativePlayerActivity : ComponentActivity() {
         handler.postDelayed(hideFavMessage, 2_500)
     }
     private val retryLive = Runnable { playCurrent() }
+
+    /** Direct : si le serveur n'envoie plus rien pendant 10 s, on rouvre la chaîne. */
+    private val stuckLive = Runnable { if (live && player?.playWhenReady == true) playCurrent() }
+    private val STUCK_LIVE_MS = 10_000L
     private val tick = object : Runnable {
         override fun run() {
             player?.let {
@@ -342,6 +346,8 @@ class NativePlayerActivity : ComponentActivity() {
                 wasReady = true
             }
             if (state == Player.STATE_BUFFERING && wasReady) stalls++
+            handler.removeCallbacks(stuckLive)
+            if (state == Player.STATE_BUFFERING && live) handler.postDelayed(stuckLive, STUCK_LIVE_MS)
             if (state == Player.STATE_ENDED) handler.post { onEnd() }
         }
 
@@ -379,6 +385,7 @@ class NativePlayerActivity : ComponentActivity() {
 
     private fun playCurrent(offset: Long = 0L) {
         handler.removeCallbacks(retryLive)
+        handler.removeCallbacks(stuckLive)
         handler.removeCallbacks(applyReplaySeek)
         pendingTarget = null
         val p = player ?: return
@@ -450,7 +457,13 @@ class NativePlayerActivity : ComponentActivity() {
     }
 
     private fun togglePause() {
-        player?.let { if (it.isPlaying) it.pause() else it.play() }
+        val p = player
+        // Direct resté en pause avec un tampon vide : le serveur a cessé d'envoyer, on rouvre la chaîne.
+        if (p != null && live && !p.playWhenReady && p.playbackState == Player.STATE_BUFFERING && p.totalBufferedDuration < 1_000) {
+            playCurrent()
+            return
+        }
+        p?.let { if (it.playWhenReady) it.pause() else it.play() }
         showOverlay()
     }
 
