@@ -537,7 +537,7 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             if (nextShown) {
-                // Bouton discret et semi-transparent pendant les 5 dernières minutes, sans compte à rebours.
+                // Bouton discret et semi-transparent pendant les 3 dernières minutes, sans compte à rebours.
                 val next = items.getOrNull(index + 1)
                 Column(
                     Modifier.align(Alignment.BottomEnd)
