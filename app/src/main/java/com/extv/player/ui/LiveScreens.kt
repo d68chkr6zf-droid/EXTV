@@ -57,7 +57,7 @@ import com.extv.player.data.toFavorite
 import com.extv.player.player.PlayItem
 import com.extv.player.player.PlayQueue
 
-fun LiveChannel.toPlayItem() = PlayItem(streamUrl, name, historyType = ContentType.LIVE, historyId = id)
+fun LiveChannel.toPlayItem() = PlayItem(streamUrl, name, historyType = ContentType.LIVE, historyId = id, favorite = toFavorite())
 
 /** Logo de la chaîne, ou ses initiales si le fournisseur n'en donne pas. */
 @Composable

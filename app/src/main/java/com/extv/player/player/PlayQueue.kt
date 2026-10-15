@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import com.extv.player.App
 import com.extv.player.data.ContentType
+import com.extv.player.data.Favorite
 
 /**
  * @param startAtMs null = reprendre à la position enregistrée (si resumeKey), 0 = depuis le début.
@@ -23,6 +24,8 @@ data class PlayItem(
     val replayUrlAt: ((Long) -> String)? = null,
     /** Durée de l'émission (replay), pour la barre de progression. */
     val durationMs: Long? = null,
+    /** Favori correspondant (appui long sur OK pendant la lecture). */
+    val favorite: Favorite? = null,
 )
 
 /**

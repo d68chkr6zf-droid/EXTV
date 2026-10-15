@@ -60,6 +60,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -201,6 +202,7 @@ fun FocusTile(
     focusedColor: Color = C.SurfaceFocus,
     selectedColor: Color = C.Selected,
     focusScale: Float = 1.04f,
+    transformOrigin: TransformOrigin = TransformOrigin.Center,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -210,6 +212,7 @@ fun FocusTile(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                this.transformOrigin = transformOrigin
             }
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged {
@@ -242,6 +245,8 @@ fun ActionButton(
         modifier = modifier,
         focusRequester = focusRequester,
         shape = RoundedCornerShape(24.dp),
+        // Agrandi depuis le bord gauche pour rester aligné avec les boutons du dessous.
+        transformOrigin = TransformOrigin(0f, 0.5f),
         normalColor = if (primary) C.Accent else C.Surface2,
         focusedColor = if (primary) Color(0xFFFFD27A) else C.SurfaceFocus,
     ) {
@@ -274,6 +279,7 @@ fun PosterCard(
     fit: Boolean = false,
     focusRequester: FocusRequester? = null,
     onLongClick: (() -> Unit)? = null,
+    favorite: Boolean = false,
 ) {
     FocusTile(
         onClick = onClick,
@@ -308,6 +314,17 @@ fun PosterCard(
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     color = Color.Black,
                     fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            if (favorite) {
+                Text(
+                    "★",
+                    Modifier.align(Alignment.TopEnd).padding(6.dp)
+                        .background(Color(0xCC000000), RoundedCornerShape(50))
+                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                    color = C.Accent,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }

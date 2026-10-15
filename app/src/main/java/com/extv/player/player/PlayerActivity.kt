@@ -98,6 +98,22 @@ class PlayerActivity : ComponentActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val hideOverlay = Runnable { overlayVisible = false }
+
+    // Appui long sur OK : ajoute/retire le programme en cours des favoris.
+    private var okLongHandled = false
+    private var favVersion by mutableIntStateOf(0)
+    private var favMessage by mutableStateOf<String?>(null)
+    private val hideFavMessage = Runnable { favMessage = null }
+
+    private fun toggleFavorite() {
+        val fav = items.getOrNull(index)?.favorite
+        favMessage = if (fav == null) "Ce programme ne peut pas être mis en favori"
+        else if (store.toggleFavorite(fav)) "★  ${fav.name} ajouté aux favoris"
+        else "☆  ${fav.name} retiré des favoris"
+        favVersion++
+        handler.removeCallbacks(hideFavMessage)
+        handler.postDelayed(hideFavMessage, 2_500)
+    }
     private val retryLive = Runnable { playCurrent() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -379,15 +395,38 @@ class PlayerActivity : ComponentActivity() {
         }
         val code = event.keyCode
         if (code !in HANDLED_KEYS) return super.dispatchKeyEvent(event)
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            val step = if (event.repeatCount > 4) 30_000L else 10_000L
-            when (code) {
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
+        // Info : ouverture au relâchement, sinon ce même relâchement refermerait aussitôt le menu.
+        if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_INFO) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                handler.removeCallbacks(hideOverlay)
+                menuVisible = true
+            }
+            return true
+        }
+        // OK : appui court = action habituelle (au relâchement), appui long = favori.
+        if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (event.repeatCount == 0) {
+                        okLongHandled = false
+                    } else if (!okLongHandled && (event.isLongPress || event.repeatCount >= 2)) {
+                        okLongHandled = true
+                        toggleFavorite()
+                    }
+                }
+                KeyEvent.ACTION_UP -> if (!okLongHandled && !event.isCanceled) {
                     when {
                         nextShown -> playNext()
                         !overlayVisible -> showOverlay()
                         else -> togglePause()
                     }
+                }
+            }
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val step = if (event.repeatCount > 4) 30_000L else 10_000L
+            when (code) {
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> togglePause()
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> seekBy(-step)
                 KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> seekBy(step)
@@ -397,10 +436,6 @@ class PlayerActivity : ComponentActivity() {
                 KeyEvent.KEYCODE_CHANNEL_DOWN -> zap(-1)
                 KeyEvent.KEYCODE_MEDIA_NEXT -> if (index < items.lastIndex || live) zap(1)
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> if (index > 0 || live) zap(-1)
-                KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_INFO -> {
-                    handler.removeCallbacks(hideOverlay)
-                    menuVisible = true
-                }
             }
         }
         return true
@@ -433,13 +468,25 @@ class PlayerActivity : ComponentActivity() {
                     fontSize = 18.sp,
                 )
             }
+            favMessage?.let {
+                Text(
+                    it,
+                    Modifier.align(Alignment.TopCenter).padding(top = 40.dp)
+                        .background(Color(0xE6000000), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 22.dp, vertical = 10.dp),
+                    color = C.Accent,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             AnimatedVisibility(overlayVisible, Modifier.align(Alignment.TopStart), enter = fadeIn(), exit = fadeOut()) {
                 Column(
                     Modifier.fillMaxWidth()
                         .background(Brush.verticalGradient(listOf(Color(0xDD000000), Color.Transparent)))
                         .padding(horizontal = 48.dp, vertical = 32.dp),
                 ) {
-                    Text(item?.title ?: "", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    val isFav = remember(item, favVersion) { item?.favorite?.let { store.isFavorite(it.key) } == true }
+                    Text((if (isFav) "★ " else "") + (item?.title ?: ""), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     if (live) {
                         Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  i : options", color = C.TextDim, fontSize = 14.sp)
                     }

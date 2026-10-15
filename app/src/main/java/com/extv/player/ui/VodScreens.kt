@@ -172,15 +172,18 @@ private fun <T> CatalogScreen(
                                 verticalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
                             ) {
                                 items(all, key = key) { item ->
+                                    val favKey = favorite(item).key
+                                    var isFav by remember(favKey) { mutableStateOf(store.isFavorite(favKey)) }
                                     PosterCard(
                                         name(item),
                                         image(item),
                                         onClick = { onOpen(item) },
                                         rating = rating(item),
                                         onLongClick = {
-                                            val fav = store.toggleFavorite(favorite(item))
-                                            toast(if (fav) "Ajouté aux favoris" else "Retiré des favoris")
+                                            isFav = store.toggleFavorite(favorite(item))
+                                            toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
                                         },
+                                        favorite = isFav,
                                     )
                                 }
                             }
@@ -258,7 +261,7 @@ fun MovieDetailScreen() {
 
     fun play(startAt: Long?) = PlayQueue.start(
         context,
-        listOf(PlayItem(movie.streamUrl, movie.name, resumeKey, startAt, ContentType.MOVIE, movie.id)),
+        listOf(PlayItem(movie.streamUrl, movie.name, resumeKey, startAt, ContentType.MOVIE, movie.id, favorite = movie.toFavorite())),
         0,
         live = false,
     )
@@ -352,6 +355,7 @@ fun SeriesDetailScreen() {
                         "ep:${it.id}",
                         historyType = ContentType.SERIES,
                         historyId = series.id,
+                        favorite = series.toFavorite(),
                     )
                 }
                 PlayQueue.start(context, queue, list.indexOf(ep).coerceAtLeast(0), live = false)
