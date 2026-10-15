@@ -42,7 +42,21 @@ class App : Application() {
         instance = this
         store = LocalStore(this)
         parental = Parental(store)
+        // Compte les allumages de l'écran (TV sortie de veille) : l'alerte de fin d'abonnement se réaffiche.
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                    screenOnCount.intValue++
+                }
+            },
+            android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
+
+    /** Nombre de fois où l'écran a été rallumé depuis le lancement d'EXTV. */
+    val screenOnCount = androidx.compose.runtime.mutableIntStateOf(0)
 
     fun createRepository(p: Profile): IptvRepository = when (p.type) {
         ProfileType.XTREAM -> XtreamRepository(p, http, store)

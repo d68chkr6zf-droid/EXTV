@@ -43,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -613,18 +614,22 @@ private fun StarArrowButton(up: Boolean, description: String, size: androidx.com
 
 /** Avertissement affiché une fois par lancement quand l'abonnement se termine dans moins de [EXPIRY_WARNING_DAYS] jours. */
 private const val EXPIRY_WARNING_DAYS = 7
-private var expiryWarningShown = false
+/** Allumage de l'écran pour lequel l'alerte a déjà été fermée (-1 : jamais). */
+private var expiryWarningClosedAt = -1
 
 @Composable
 private fun ExpiryWarning(expDate: Long) {
     val daysLeft = ((expDate - System.currentTimeMillis()) / 86_400_000L).toInt()
-    var visible by remember { mutableStateOf(!expiryWarningShown && daysLeft in 0 until EXPIRY_WARNING_DAYS) }
+    // Affichée à chaque ouverture d'EXTV et à chaque fois que la TV sort de veille.
+    val wake by App.instance.screenOnCount
+    var closedAt by remember { mutableIntStateOf(expiryWarningClosedAt) }
+    val visible = closedAt != wake && daysLeft in 0 until EXPIRY_WARNING_DAYS
     if (!visible) return
     val ok = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { ok.requestFocus() } }
     fun close() {
-        expiryWarningShown = true
-        visible = false
+        expiryWarningClosedAt = wake
+        closedAt = wake
     }
     val remaining = when (daysLeft) {
         0 -> "aujourd'hui"
