@@ -779,27 +779,48 @@ class NativePlayerActivity : ComponentActivity() {
 
     @Composable
     private fun RoundControl(symbol: String, size: Int, isSelected: Boolean, onClick: () -> Unit) {
+        val isInfo = symbol == "i"
         val scale = if (isSelected) 1.18f else 1f
-        Box(
-            Modifier.size(size.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clip(CircleShape)
-                .background(if (isSelected) Color(0xCC1E1A12) else Color(0x99000000))
-                .border(if (isSelected) 3.dp else 0.dp, if (isSelected) C.Accent else Color.Transparent, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (symbol == "i") GoldenI(size) else Text(symbol, color = Color.White, fontSize = (size / 2.4).sp)
+        val circle = @Composable {
+            Box(
+                Modifier.size(size.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .clip(CircleShape)
+                    .background(if (isSelected) Color(0xCC1E1A12) else Color(0x99000000))
+                    .border(
+                        when {
+                            isSelected -> 3.dp
+                            isInfo -> 2.dp
+                            else -> 0.dp
+                        },
+                        if (isSelected || isInfo) C.Accent else Color.Transparent,
+                        CircleShape,
+                    )
+                    .clickable(onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isInfo) GoldenI(size) else Text(symbol, color = Color.White, fontSize = (size / 2.4).sp)
+            }
+        }
+        if (!isInfo) {
+            circle()
+            return
+        }
+        // Cercle doré avec « Info » en dessous ; espace identique au-dessus pour rester aligné avec les autres boutons.
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(22.dp))
+            circle()
+            Text("Info", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.height(22.dp).padding(top = 4.dp))
         }
     }
 
     /** « i » minuscule doré, avec un point bien visible (bouton Options). */
     @Composable
     private fun GoldenI(size: Int) {
-        Canvas(Modifier.size((size * 0.55f).dp)) {
+        Canvas(Modifier.size((size * 0.5f).dp)) {
             val w = this.size.width
             val h = this.size.height
             val stem = w * 0.2f
