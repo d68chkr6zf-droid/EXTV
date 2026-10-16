@@ -1,5 +1,11 @@
 package com.extv.player.player
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
@@ -107,7 +113,31 @@ class NativePlayerActivity : ComponentActivity() {
     private var tracksVersion by mutableIntStateOf(0)
 
     private val handler = Handler(Looper.getMainLooper())
-    private val hideOverlay = Runnable { overlayVisible = false }
+    private val hideOverlay = Runnable {
+        overlayVisible = false
+        selected = -1
+    }
+
+    /** Bouton sélectionné dans la barre de commandes (-1 : aucune sélection, ◀ ▶ avancent/reculent). */
+    private var selected by mutableIntStateOf(-1)
+
+    private class Control(val id: String, val symbol: String, val size: Int, val action: () -> Unit)
+
+    /** Boutons de la barre, dans l'ordre d'affichage. */
+    private fun controls(): List<Control> = buildList {
+        if (items.size > 1) add(Control("prev", "⏮", 52) { zap(-1) })
+        if (!live) add(Control("rew", "⏪", 52) { seekBy(-10_000) })
+        add(Control("play", if (isPlaying) "⏸" else "▶", 72) { togglePause() })
+        if (!live) add(Control("fwd", "⏩", 52) { seekBy(10_000) })
+        if (items.size > 1) add(Control("next", "⏭", 52) { zap(1) })
+        add(Control("info", "i", 52) { openOptions() })
+    }
+
+    private fun openOptions() {
+        handler.removeCallbacks(hideOverlay)
+        selected = -1
+        menuVisible = true
+    }
 
     // Appui long sur OK : ajoute/retire le programme en cours des favoris.
     private var okLongHandled = false
@@ -507,7 +537,7 @@ class NativePlayerActivity : ComponentActivity() {
     private fun showOverlay() {
         overlayVisible = true
         handler.removeCallbacks(hideOverlay)
-        handler.postDelayed(hideOverlay, 4000)
+        handler.postDelayed(hideOverlay, if (selected >= 0) 6000 else 4000)
     }
 
     // --- Pistes ------------------------------------------------------------------------------
@@ -560,13 +590,30 @@ class NativePlayerActivity : ComponentActivity() {
             return super.dispatchKeyEvent(event)
         }
         val code = event.keyCode
+        // Barre de commandes active : Retour la referme ; ◀ ▶ passent d'un bouton à l'autre.
+        if (overlayVisible && selected >= 0) {
+            when (code) {
+                KeyEvent.KEYCODE_BACK -> {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        handler.removeCallbacks(hideOverlay)
+                        hideOverlay.run()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (event.action == KeyEvent.ACTION_DOWN) {
+                        val n = controls().size
+                        selected = (selected + if (code == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1).coerceIn(0, n - 1)
+                        showOverlay()
+                    }
+                    return true
+                }
+            }
+        }
         if (code !in HANDLED_KEYS) return super.dispatchKeyEvent(event)
         // Info : ouverture au relâchement, sinon ce même relâchement refermerait aussitôt le menu.
         if (code == KeyEvent.KEYCODE_MENU || code == KeyEvent.KEYCODE_INFO) {
-            if (event.action == KeyEvent.ACTION_UP) {
-                handler.removeCallbacks(hideOverlay)
-                menuVisible = true
-            }
+            if (event.action == KeyEvent.ACTION_UP) openOptions()
             return true
         }
         // OK : appui court = action habituelle (au relâchement), appui long = favori.
@@ -583,8 +630,22 @@ class NativePlayerActivity : ComponentActivity() {
                 KeyEvent.ACTION_UP -> if (!okLongHandled && !event.isCanceled) {
                     when {
                         nextShown -> playNext()
-                        !overlayVisible -> showOverlay()
-                        else -> togglePause()
+                        overlayVisible && selected >= 0 -> {
+                            val list = controls()
+                            list.getOrNull(selected)?.let { c ->
+                                c.action()
+                                // Le bouton lecture/pause reste sélectionné après usage.
+                                if (c.id != "info") {
+                                    selected = controls().indexOfFirst { it.id == c.id }.coerceAtLeast(0)
+                                    showOverlay()
+                                }
+                            }
+                        }
+                        else -> {
+                            // OK affiche la barre avec lecture/pause sélectionné.
+                            selected = controls().indexOfFirst { it.id == "play" }
+                            showOverlay()
+                        }
                     }
                 }
             }
@@ -651,22 +712,14 @@ class NativePlayerActivity : ComponentActivity() {
                     val isFav = remember(item, favVersion) { item?.favorite?.let { store.isFavorite(it.key) } == true }
                     Text((if (isFav) "★ " else "") + (item?.title ?: ""), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     if (live) {
-                        Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  i : options", color = C.TextDim, fontSize = 14.sp)
+                        Text("Chaîne ${index + 1} / ${items.size}  ·  ▲ ▼ pour zapper  ·  OK : commandes  ·  i : options", color = C.TextDim, fontSize = 14.sp)
                     }
                     if (techInfo.isNotEmpty()) Text(techInfo, color = C.TextDim, fontSize = 13.sp)
                 }
             }
             AnimatedVisibility(overlayVisible, Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (items.size > 1) RoundControl("⏮", 52) { zap(-1) }
-                    if (!live) RoundControl("⏪", 52) { seekBy(-10_000) }
-                    RoundControl(if (isPlaying) "⏸" else "▶", 72) { togglePause() }
-                    if (!live) RoundControl("⏩", 52) { seekBy(10_000) }
-                    if (items.size > 1) RoundControl("⏭", 52) { zap(1) }
-                    RoundControl("⚙", 52) {
-                        handler.removeCallbacks(hideOverlay)
-                        menuVisible = true
-                    }
+                    controls().forEachIndexed { i, c -> RoundControl(c.symbol, c.size, i == selected, c.action) }
                 }
             }
             AnimatedVisibility(overlayVisible && !live, Modifier.align(Alignment.BottomStart), enter = fadeIn(), exit = fadeOut()) {
@@ -688,8 +741,9 @@ class NativePlayerActivity : ComponentActivity() {
                             when {
                                 pendingTarget != null -> "Reprise à ${formatDuration(timeMs)}…"
                                 !isPlaying -> "En pause"
-                                items.getOrNull(index)?.replayUrlAt != null -> "OK : pause  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  i : options"
-                                else -> "OK : pause  ·  ◀ ▶ : -10 s / +10 s  ·  i : options"
+                                selected >= 0 -> "◀ ▶ : choisir un bouton  ·  OK : valider  ·  Retour : masquer"
+                                items.getOrNull(index)?.replayUrlAt != null -> "OK : commandes  ·  ◀ ▶ : -1 min / +1 min (maintenir : 5 min)  ·  i : options"
+                                else -> if (selected >= 0) "◀ ▶ : choisir un bouton  ·  OK : valider  ·  Retour : masquer" else "OK : commandes  ·  ◀ ▶ : -10 s / +10 s  ·  i : options"
                             },
                             color = C.TextDim,
                             fontSize = 14.sp,
@@ -724,12 +778,39 @@ class NativePlayerActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun RoundControl(symbol: String, size: Int, onClick: () -> Unit) {
+    private fun RoundControl(symbol: String, size: Int, isSelected: Boolean, onClick: () -> Unit) {
+        val scale = if (isSelected) 1.18f else 1f
         Box(
-            Modifier.size(size.dp).clip(CircleShape).background(Color(0x99000000)).clickable(onClick = onClick),
+            Modifier.size(size.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(CircleShape)
+                .background(if (isSelected) Color(0xCC1E1A12) else Color(0x99000000))
+                .border(if (isSelected) 3.dp else 0.dp, if (isSelected) C.Accent else Color.Transparent, CircleShape)
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Text(symbol, color = Color.White, fontSize = (size / 2.4).sp)
+            if (symbol == "i") GoldenI(size) else Text(symbol, color = Color.White, fontSize = (size / 2.4).sp)
+        }
+    }
+
+    /** « i » minuscule doré, avec un point bien visible (bouton Options). */
+    @Composable
+    private fun GoldenI(size: Int) {
+        Canvas(Modifier.size((size * 0.55f).dp)) {
+            val w = this.size.width
+            val h = this.size.height
+            val stem = w * 0.2f
+            val dot = w * 0.15f
+            drawCircle(C.Accent, radius = dot, center = Offset(w / 2, h * 0.16f))
+            drawRoundRect(
+                C.Accent,
+                topLeft = Offset(w / 2 - stem / 2, h * 0.38f),
+                size = Size(stem, h * 0.62f),
+                cornerRadius = CornerRadius(stem / 2, stem / 2),
+            )
         }
     }
 
