@@ -1,5 +1,6 @@
 package com.extv.player.ui
 
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
@@ -228,8 +229,42 @@ fun FocusTile(
                 },
             )
             .border(2.dp, if (focused) C.Accent else Color.Transparent, shape)
+            .then(if (onLongClick != null) Modifier.okLongPress(onClick, onLongClick) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) { content(focused) }
+}
+
+/**
+ * Télécommande : OK court = onClick, OK maintenu = onLongClick (une seule fois, sans clic ensuite).
+ * Géré ici plutôt que par combinedClickable, qui sur certaines TV déclenche aussi le clic.
+ */
+@Composable
+private fun Modifier.okLongPress(onClick: () -> Unit, onLongClick: () -> Unit): Modifier {
+    val longDone = remember { booleanArrayOf(false) }
+    val click by rememberUpdatedState(onClick)
+    val longClick by rememberUpdatedState(onLongClick)
+    return onPreviewKeyEvent { e ->
+        val k = e.nativeKeyEvent
+        val ok = k.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+            k.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+            k.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+        if (!ok) return@onPreviewKeyEvent false
+        when (k.action) {
+            android.view.KeyEvent.ACTION_DOWN -> {
+                if (k.repeatCount == 0) {
+                    longDone[0] = false
+                } else if (!longDone[0] && (k.isLongPress || k.repeatCount >= 2)) {
+                    longDone[0] = true
+                    longClick()
+                }
+            }
+            android.view.KeyEvent.ACTION_UP -> {
+                if (!longDone[0] && !k.isCanceled) click()
+                longDone[0] = false
+            }
+        }
+        true
+    }
 }
 
 @Composable

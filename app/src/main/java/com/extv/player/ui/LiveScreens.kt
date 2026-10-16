@@ -155,6 +155,7 @@ fun LiveScreen() {
                     ChannelPanel(
                         channel = previewing ?: focused,
                         guideChannel = focused ?: previewing,
+                        favVersion = favVersion,
                         previewUrl = previewing?.streamUrl,
                         muted = muted,
                         onToggleMute = { muted = !muted },
@@ -212,6 +213,7 @@ private fun ChannelPanel(
     channel: LiveChannel?,
     /** Chaîne dont on affiche le programme : celle sur laquelle on se trouve dans la liste. */
     guideChannel: LiveChannel?,
+    favVersion: Int,
     previewUrl: String?,
     muted: Boolean,
     onToggleMute: () -> Unit,
@@ -243,11 +245,12 @@ private fun ChannelPanel(
             }
         }
         if (channel != null) {
+        val isFav = remember(channel.id, favVersion) { App.instance.store.isFavorite(Favorite.keyOf(ContentType.LIVE, channel.id)) }
         Text(channel.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionButton("⛶ Plein écran", primary = true) { onFullscreen(channel) }
             if (previewUrl != null) ActionButton(if (muted) "🔇" else "🔊") { onToggleMute() }
-            ActionButton("★") { onFavorite(channel) }
+            ActionButton(if (isFav) "★" else "☆") { onFavorite(channel) }
         }
         // Programme de la chaîne sélectionnée dans la liste, même si l'aperçu montre une autre chaîne.
         if (guide != null && guide.id != channel.id) {
