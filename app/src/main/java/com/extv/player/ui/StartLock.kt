@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.extv.player.App
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Allumage de l'écran pour lequel EXTV a déjà été déverrouillé (-1 : pas encore depuis le lancement). */
 private val unlockedAtWake = mutableIntStateOf(-1)
@@ -172,12 +176,14 @@ private fun ForgotCode(onBack: () -> Unit, onUnlocked: () -> Unit) {
     val profile = remember { App.instance.store.activeProfile() }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
+    var checking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(420.dp)) {
         Text("Code oublié", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Entrez le mot de passe de votre abonnement. Le verrouillage sera désactivé, vous pourrez choisir un nouveau code dans les paramètres.",
+            "Entrez le mot de passe actuel de votre abonnement. Le verrouillage sera désactivé, vous pourrez choisir un nouveau code dans les paramètres.",
             color = C.TextDim,
             modifier = Modifier.padding(vertical = 12.dp),
         )
@@ -195,8 +201,29 @@ private fun ForgotCode(onBack: () -> Unit, onUnlocked: () -> Unit) {
         )
         if (error) Text("Mot de passe incorrect", color = C.Error, modifier = Modifier.padding(top = 8.dp))
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("Valider", primary = true) {
-                if (profile != null && password.isNotEmpty() && password == profile.password) onUnlocked() else error = true
+            ActionButton(if (checking) "Vérification…" else "Valider", primary = true) {
+                if (checking || profile == null || password.isEmpty()) return@ActionButton
+                if (password == profile.password) {
+                    onUnlocked()
+                    return@ActionButton
+                }
+                // Mot de passe changé chez le fournisseur : on le vérifie auprès du serveur.
+                checking = true
+                scope.launch {
+                    val ok = runCatching {
+                        val app = App.instance
+                        val candidate = profile.copy(password = password)
+                        withContext(Dispatchers.IO) { app.createRepository(candidate).accountInfo()?.authenticated == true }
+                    }.getOrDefault(false)
+                    checking = false
+                    if (ok) {
+                        App.instance.store.saveProfile(profile.copy(password = password))
+                        App.instance.resetRepository()
+                        onUnlocked()
+                    } else {
+                        error = true
+                    }
+                }
             }
             ActionButton("Retour") { onBack() }
         }
