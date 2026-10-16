@@ -154,6 +154,7 @@ fun LiveScreen() {
                     channelList(Modifier.weight(1f).fillMaxHeight())
                     ChannelPanel(
                         channel = previewing ?: focused,
+                        guideChannel = focused ?: previewing,
                         previewUrl = previewing?.streamUrl,
                         muted = muted,
                         onToggleMute = { muted = !muted },
@@ -209,6 +210,8 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
 @Composable
 private fun ChannelPanel(
     channel: LiveChannel?,
+    /** Chaîne dont on affiche le programme : celle sur laquelle on se trouve dans la liste. */
+    guideChannel: LiveChannel?,
     previewUrl: String?,
     muted: Boolean,
     onToggleMute: () -> Unit,
@@ -218,12 +221,13 @@ private fun ChannelPanel(
 ) {
     val repo = App.instance.repository() ?: return
     val now = rememberNow()
-    val epg = rememberLoader(channel?.id) {
-        if (channel == null) {
+    val guide = guideChannel ?: channel
+    val epg = rememberLoader(guide?.id) {
+        if (guide == null) {
             emptyList()
         } else {
             kotlinx.coroutines.delay(250) // évite une requête par chaîne pendant le défilement rapide
-            runCatching { repo.epg(channel, 8) }.getOrDefault(emptyList())
+            runCatching { repo.epg(guide, 8) }.getOrDefault(emptyList())
         }
     }.value
     Column(modifier) {
@@ -244,6 +248,10 @@ private fun ChannelPanel(
             ActionButton("⛶ Plein écran", primary = true) { onFullscreen(channel) }
             if (previewUrl != null) ActionButton(if (muted) "🔇" else "🔊") { onToggleMute() }
             ActionButton("★") { onFavorite(channel) }
+        }
+        // Programme de la chaîne sélectionnée dans la liste, même si l'aperçu montre une autre chaîne.
+        if (guide != null && guide.id != channel.id) {
+            Text("Programme : ${guide.name}", color = C.Accent, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 6.dp))
         }
         val programs = epg
         when {
