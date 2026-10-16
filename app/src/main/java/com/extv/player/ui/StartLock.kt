@@ -94,9 +94,7 @@ fun StartLock() {
                         unlockedAtWake.intValue = wake
                     },
                 )
-                return@Box
-            }
-            Column(
+            } else Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.onPreviewKeyEvent { e ->
                     val k = e.nativeKeyEvent
