@@ -214,6 +214,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var tick by remember { mutableIntStateOf(0) } // force le rafraîchissement des valeurs affichées
     var pinRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var askNewPin by remember { mutableStateOf(false) }
+    // Code au démarrage : vérification du code actuel, puis choix (1) et confirmation (2) du nouveau.
+    var startPinRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var startStep by remember { mutableIntStateOf(0) }
+    var newStartPin by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -317,6 +321,21 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 changed()
             }
 
+            Section("Verrouillage de l'application")
+            SettingRow("Code au démarrage", if (store.startLock) "Activé" else "Désactivé") {
+                if (store.startLock) {
+                    startPinRequest = { store.startLock = false; changed() }
+                } else {
+                    newStartPin = ""
+                    startStep = 1
+                }
+            }
+            if (store.startLock) {
+                SettingRow("Modifier le code de démarrage", "") {
+                    startPinRequest = { newStartPin = ""; startStep = 1 }
+                }
+            }
+
             Section("Contrôle parental")
             SettingRow("Verrouiller les catégories adultes", if (store.autoLockAdult) "Oui" else "Non") {
                 if (store.autoLockAdult) {
@@ -344,6 +363,40 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         PinDialog(onDismiss = { pinRequest = null }) {
             pinRequest = null
             action()
+        }
+    }
+    startPinRequest?.let { action ->
+        PinDialog(
+            title = "Code de démarrage actuel",
+            onDismiss = { startPinRequest = null },
+            check = { it == store.startPin },
+        ) {
+            startPinRequest = null
+            action()
+        }
+    }
+    if (startStep == 1) {
+        PinDialog(
+            title = "Choisissez votre code (4 chiffres)",
+            onDismiss = { startStep = 0 },
+            check = { it.length == 4 },
+        ) { pin ->
+            newStartPin = pin
+            startStep = 2
+        }
+    }
+    if (startStep == 2) {
+        PinDialog(
+            title = "Confirmez votre code",
+            onDismiss = { startStep = 0 },
+            check = { it == newStartPin },
+        ) { pin ->
+            store.startPin = pin
+            store.startLock = true
+            markStartUnlocked()
+            startStep = 0
+            info = "Code au démarrage activé. Il sera demandé à chaque ouverture d'EXTV et sortie de veille."
+            tick++
         }
     }
     if (askNewPin) {

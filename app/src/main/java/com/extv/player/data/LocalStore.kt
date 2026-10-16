@@ -112,6 +112,15 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getString("pin", "0000") ?: "0000"
         set(value) = prefs.edit().putString("pin", value).apply()
 
+    /** Verrouillage d'EXTV au démarrage par un code à 4 chiffres choisi par l'abonné (désactivé par défaut). */
+    var startLock: Boolean
+        get() = prefs.getBoolean("startLock", false) && startPin.length == 4
+        set(value) = prefs.edit().putBoolean("startLock", value).apply()
+
+    var startPin: String
+        get() = prefs.getString("startPin", "") ?: ""
+        set(value) = prefs.edit().putString("startPin", value).apply()
+
     var autoLockAdult: Boolean
         get() = prefs.getBoolean("autoLockAdult", true)
         set(value) = prefs.edit().putBoolean("autoLockAdult", value).apply()
