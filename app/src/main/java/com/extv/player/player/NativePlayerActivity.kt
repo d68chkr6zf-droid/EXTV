@@ -133,6 +133,13 @@ class NativePlayerActivity : ComponentActivity() {
         add(Control("info", "i", 52) { openOptions() })
     }
 
+    /** Fermeture des options : la barre de commandes disparaît aussi, sans attendre. */
+    private fun closeOptions() {
+        menuVisible = false
+        handler.removeCallbacks(hideOverlay)
+        hideOverlay.run()
+    }
+
     private fun openOptions() {
         handler.removeCallbacks(hideOverlay)
         selected = -1
@@ -584,7 +591,7 @@ class NativePlayerActivity : ComponentActivity() {
         }
         if (menuVisible) {
             if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_MENU || event.keyCode == KeyEvent.KEYCODE_INFO) {
-                if (event.action == KeyEvent.ACTION_UP) menuVisible = false
+                if (event.action == KeyEvent.ACTION_UP) closeOptions()
                 return true
             }
             return super.dispatchKeyEvent(event)
@@ -875,7 +882,7 @@ class NativePlayerActivity : ComponentActivity() {
                     }
                 }
             }
-            item { MenuItem("Fermer") { menuVisible = false } }
+            item { MenuItem("Fermer") { closeOptions() } }
         }
     }
 
