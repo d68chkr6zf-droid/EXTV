@@ -74,6 +74,9 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -213,6 +216,7 @@ class NativePlayerActivity : ComponentActivity() {
     @Volatile private var measuredFps = 0f
     private var droppedFrames by mutableIntStateOf(0)
     private var stalls by mutableIntStateOf(0)
+    private var reconnects by mutableIntStateOf(0)
     private var wasReady = false
     private var techInfo by mutableStateOf("")
 
@@ -244,6 +248,7 @@ class NativePlayerActivity : ComponentActivity() {
         if (hz > 0f) parts += "écran %.2f Hz".format(hz)
         parts += "images perdues : $droppedFrames"
         parts += "arrêts : $stalls"
+        if (live) parts += "reconnexions : $reconnects"
         parts += "tampon %.1f s".format(p.totalBufferedDuration / 1000f)
         techInfo = parts.joinToString("  ·  ")
     }
@@ -252,6 +257,7 @@ class NativePlayerActivity : ComponentActivity() {
         measuredFps = 0f
         droppedFrames = 0
         stalls = 0
+        reconnects = 0
         wasReady = false
         firstPtsUs = -1L
         lastPtsUs = -1L
@@ -340,6 +346,8 @@ class NativePlayerActivity : ComponentActivity() {
         handler.removeCallbacksAndMessages(null)
     }
 
+    private var liveSourceFactory: ProgressiveMediaSource.Factory? = null
+
     private fun buildPlayer(): ExoPlayer {
         // La « mémoire tampon réseau » des paramètres sert aussi au lecteur natif.
         val caching = store.networkCaching
@@ -357,6 +365,21 @@ class NativePlayerActivity : ComponentActivity() {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
+
+        // Direct .ts : connexion surveillée et rouverte en arrière-plan pendant que la réserve se lit.
+        // Un serveur muet 6 s est considéré comme coupé (la réserve couvre la reconnexion).
+        val liveHttp = DefaultHttpDataSource.Factory()
+            .setUserAgent(store.userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(8_000)
+            .setReadTimeoutMs(6_000)
+        val extractors = DefaultExtractorsFactory()
+            // Chaînes TV dont les images clés ne sont pas marquées « IDR » : démarrage et raccord plus rapides.
+            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
+        liveSourceFactory = ProgressiveMediaSource.Factory(
+            LiveReconnectDataSource.Factory(liveHttp) { handler.post { reconnects++ } },
+            extractors,
+        )
 
         val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
 
@@ -447,7 +470,12 @@ class NativePlayerActivity : ComponentActivity() {
         }
 
         val url = if (item.replayUrlAt != null && baseOffset > 0) item.replayUrlAt.invoke(baseOffset) else item.url
-        p.setMediaItem(MediaItem.fromUri(url), if (item.replayUrlAt != null) 0L else start)
+        val liveFactory = liveSourceFactory
+        if (live && liveFactory != null && !url.contains(".m3u8", ignoreCase = true)) {
+            p.setMediaSource(liveFactory.createMediaSource(MediaItem.fromUri(url)))
+        } else {
+            p.setMediaItem(MediaItem.fromUri(url), if (item.replayUrlAt != null) 0L else start)
+        }
         p.prepare()
         p.playWhenReady = true
         showOverlay()

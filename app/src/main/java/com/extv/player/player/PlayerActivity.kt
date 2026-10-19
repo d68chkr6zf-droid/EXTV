@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -153,6 +154,20 @@ class PlayerActivity : ComponentActivity() {
     }
     private val retryLive = Runnable { playCurrent() }
 
+    /** Direct : si l'image n'avance plus (serveur muet) au-delà de la réserve + 10 s, on rouvre la chaîne. */
+    private var lastProgressAt = 0L
+    private var userPaused = false
+    private val watchLive = object : Runnable {
+        override fun run() {
+            val limit = maxOf(12_000L, store.networkCaching + 10_000L)
+            if (live && !userPaused && SystemClock.elapsedRealtime() - lastProgressAt > limit) {
+                playCurrent()
+                return
+            }
+            handler.postDelayed(this, 2_000)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -236,8 +251,12 @@ class PlayerActivity : ComponentActivity() {
     private fun playCurrent(offset: Long = 0L) {
         handler.removeCallbacks(retryLive)
         handler.removeCallbacks(applyReplaySeek)
+        handler.removeCallbacks(watchLive)
         pendingTarget = null
         val item = items.getOrNull(index) ?: return
+        lastProgressAt = SystemClock.elapsedRealtime()
+        userPaused = false
+        if (live) handler.postDelayed(watchLive, 2_000)
         frenchChosen = false
         errorText = null
         baseOffset = if (item.replayUrlAt != null) offset else 0L
@@ -297,7 +316,10 @@ class PlayerActivity : ComponentActivity() {
                 bufferPercent = e.buffering
                 isBuffering = e.buffering < 100f
             }
-            MediaPlayer.Event.TimeChanged -> if (pendingTarget == null) timeMs = baseOffset + e.timeChanged
+            MediaPlayer.Event.TimeChanged -> {
+                lastProgressAt = SystemClock.elapsedRealtime()
+                if (pendingTarget == null) timeMs = baseOffset + e.timeChanged
+            }
             MediaPlayer.Event.LengthChanged -> lengthMs = items.getOrNull(index)?.durationMs ?: e.lengthChanged
             MediaPlayer.Event.EndReached -> handler.post { onEnd() }
             MediaPlayer.Event.EncounteredError -> {
@@ -369,7 +391,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun togglePause() {
-        if (mediaPlayer.isPlaying) mediaPlayer.pause() else mediaPlayer.play()
+        userPaused = mediaPlayer.isPlaying
+        lastProgressAt = SystemClock.elapsedRealtime()
+        if (userPaused) mediaPlayer.pause() else mediaPlayer.play()
         showOverlay()
     }
 
