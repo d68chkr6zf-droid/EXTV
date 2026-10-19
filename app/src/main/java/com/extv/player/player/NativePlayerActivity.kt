@@ -196,7 +196,7 @@ class NativePlayerActivity : ComponentActivity() {
             handler.post { matchRefreshRate(format.frameRate) }
             return@VideoFrameMetadataListener
         }
-        // Débit d'images non indiqué dans le flux (fréquent en direct) : on le mesure sur 60 images.
+        // Débit d'images non indiqué dans le flux (fréquent en direct) : on le mesure sur 150 images.
         if (firstPtsUs < 0 || ptsUs <= lastPtsUs) {
             firstPtsUs = ptsUs
             frameCount = 0
@@ -204,12 +204,22 @@ class NativePlayerActivity : ComponentActivity() {
             frameCount++
         }
         lastPtsUs = ptsUs
-        if (frameCount >= 60 && ptsUs > firstPtsUs) {
+        if (frameCount >= 150 && ptsUs > firstPtsUs) {
             rateMatched = true
-            val fps = frameCount * 1_000_000f / (ptsUs - firstPtsUs)
+            val fps = standardFps(frameCount * 1_000_000f / (ptsUs - firstPtsUs))
             measuredFps = fps
             handler.post { matchRefreshRate(fps) }
         }
+    }
+
+    /**
+     * La mesure en direct est imprécise (images perdues, à-coups du réseau : 48,4 au lieu de 50).
+     * On la ramène à la cadence de diffusion la plus proche, pour pouvoir caler l'écran dessus.
+     */
+    private fun standardFps(measured: Float): Float {
+        val standard = floatArrayOf(23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f)
+        val nearest = standard.minByOrNull { Math.abs(it - measured) } ?: return measured
+        return if (Math.abs(nearest - measured) <= nearest * 0.06f) nearest else measured
     }
 
     // Infos techniques affichées sous le titre (résolution, images/s, fréquence de l'écran, images perdues).
