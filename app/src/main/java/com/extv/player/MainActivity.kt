@@ -11,6 +11,8 @@ import com.extv.player.ui.UpdatePrompt
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // EXTV est rouvert : la relance programmée pendant une mise à jour n'a plus lieu d'être.
+        com.extv.player.data.Updater.cancelRestart(this)
         setContent {
             ExtvTheme {
                 AppNav()

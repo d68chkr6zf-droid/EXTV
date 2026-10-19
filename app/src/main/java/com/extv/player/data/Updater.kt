@@ -1,7 +1,9 @@
 package com.extv.player.data
 
-import android.content.Context
+import android.app.ActivityOptions
+import android.app.AlarmManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
@@ -9,6 +11,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.extv.player.BuildConfig
+import com.extv.player.MainActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -133,6 +136,8 @@ object Updater {
                 Intent(context, InstallReceiver::class.java).setAction("com.extv.player.INSTALL_RESULT"),
                 flags,
             )
+            // Filet de sécurité : si Android ferme EXTV sans prévenir, l'appli se rouvre d'elle-même.
+            scheduleRestart(context, 90_000)
             session.commit(callback.intentSender)
         }
     }
@@ -144,5 +149,39 @@ object Updater {
             .setDataAndType(uri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
+    }
+
+    /**
+     * Relance d'EXTV après la mise à jour. Depuis Android 10, une appli fermée ne peut plus ouvrir son
+     * écran toute seule ; seule une « alarme réveil » (AlarmClock) en a le droit. On en programme une
+     * qui ouvre l'accueil d'EXTV, annulée dès que l'appli redémarre ou si l'installation échoue.
+     */
+    fun scheduleRestart(context: Context, delayMs: Long) {
+        runCatching {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val at = System.currentTimeMillis() + delayMs
+            val pi = restartIntent(context)
+            val exact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+            if (exact) am.setAlarmClock(AlarmManager.AlarmClockInfo(at, pi), pi) else am.set(AlarmManager.RTC_WAKEUP, at, pi)
+        }
+    }
+
+    fun cancelRestart(context: Context) {
+        runCatching { (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(restartIntent(context)) }
+    }
+
+    private fun restartIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        // Android 14+ : EXTV autorise explicitement l'ouverture de son écran depuis l'arrière-plan.
+        val options = if (Build.VERSION.SDK_INT >= 34) {
+            ActivityOptions.makeBasic()
+                .setPendingIntentCreatorBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                .toBundle()
+        } else {
+            null
+        }
+        return PendingIntent.getActivity(context, 4242, intent, flags, options)
     }
 }

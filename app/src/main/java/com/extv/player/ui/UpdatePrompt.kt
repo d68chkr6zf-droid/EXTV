@@ -65,7 +65,7 @@ fun UpdatePrompt() {
     val failed by Updater.installFailed
 
     fun update() {
-        if (progress != null) return
+        if (progress != null || (installing && failed == null)) return
         installing = false
         if (!Updater.canInstall(context)) {
             message = "Autorisez EXTV à installer des applications, puis revenez et appuyez sur OK."
@@ -108,7 +108,13 @@ fun UpdatePrompt() {
             Column {
                 Text("La version ${r.versionName} d'EXTV est obligatoire. Elle s'installe maintenant, vos favoris et réglages sont conservés.")
                 if (installing && failed == null) {
-                    Text("Installation en cours… EXTV va redémarrer. Si Android le demande, choisissez « Installer ».", color = C.TextDim, modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        "Installation en cours, patientez pendant le redémarrage. EXTV va se fermer quelques secondes " +
+                            "(l'écran d'accueil de la TV peut apparaître) puis se rouvrir tout seul.",
+                        color = C.Accent,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    Text("Si Android le demande, choisissez « Installer ».", color = C.TextDim, modifier = Modifier.padding(top = 6.dp))
                 }
                 failed?.let { Text("L'installation n'a pas abouti ($it). Appuyez sur Réessayer.", color = C.Accent, modifier = Modifier.padding(top = 12.dp)) }
                 progress?.let {
@@ -124,7 +130,8 @@ fun UpdatePrompt() {
         },
         confirmButton = {
             TextButton(onClick = { update() }, modifier = Modifier.focusRequester(ok)) {
-                Text(if (progress != null) "Patientez…" else "Réessayer", color = C.Accent, fontWeight = FontWeight.Bold)
+                val waiting = progress != null || (installing && failed == null)
+                Text(if (waiting) "Patientez…" else "Réessayer", color = C.Accent, fontWeight = FontWeight.Bold)
             }
         },
     )
