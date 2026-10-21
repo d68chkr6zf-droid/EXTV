@@ -46,6 +46,7 @@ import com.extv.player.data.Updater
 import com.extv.player.data.Category
 import com.extv.player.data.ContentType
 import com.extv.player.data.Favorite
+import com.extv.player.data.LiveChannel
 import com.extv.player.data.LocalStore
 import com.extv.player.data.Movie
 import com.extv.player.data.ProfileType
@@ -103,6 +104,10 @@ fun FavoritesScreen(
                 color = C.TextDim,
             )
         }
+        // Chaînes du catalogue (en cache) pour retrouver l'EPG des chaînes favorites.
+        val liveById = if (favorites.any { it.type == ContentType.LIVE }) {
+            rememberLoader("favLive") { repo.liveChannels(null).associateBy { it.id } }.value
+        } else null
         val first = remember { FocusRequester() }
         var firstAssigned = false
         listOf(
@@ -117,13 +122,18 @@ fun FavoritesScreen(
                 Text(label, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     itemsIndexed(list) { i, f ->
-                        PosterCard(
+                        if (type == ContentType.LIVE) {
+                            FavoriteChannelCard(
+                                f,
+                                liveById?.get(f.id),
+                                onClick = { open(f) },
+                                focusRequester = if (i == 0) requester else null,
+                            )
+                        } else PosterCard(
                             f.name,
                             f.image,
                             onClick = { open(f) },
-                            modifier = Modifier.width(if (type == ContentType.LIVE) 170.dp else 150.dp),
-                            aspect = if (type == ContentType.LIVE) 16f / 10f else 2f / 3f,
-                            fit = type == ContentType.LIVE,
+                            modifier = Modifier.width(150.dp),
                             focusRequester = if (i == 0) requester else null,
                         )
                     }
@@ -132,6 +142,28 @@ fun FavoritesScreen(
         }
         LaunchedEffect(favorites.isNotEmpty()) { if (favorites.isNotEmpty()) runCatching { first.requestFocus() } }
     }
+}
+
+/** Vignette d'une chaîne favorite avec le programme en cours (seules les vignettes affichées chargent leur EPG). */
+@Composable
+private fun FavoriteChannelCard(f: Favorite, channel: LiveChannel?, onClick: () -> Unit, focusRequester: FocusRequester?) {
+    val repo = App.instance.repository()
+    val now = rememberNow(60_000)
+    val programs = rememberLoader(channel?.id) {
+        if (channel == null || repo == null) emptyList() else repo.nowNext(channel)
+    }.value.orEmpty()
+    val current = programs.firstOrNull { now in it.start until it.end }
+    PosterCard(
+        f.name,
+        f.image,
+        onClick = onClick,
+        modifier = Modifier.width(170.dp),
+        aspect = 16f / 10f,
+        fit = true,
+        focusRequester = focusRequester,
+        subtitle = current?.title?.ifBlank { null },
+        progress = current?.let { ((now - it.start).toFloat() / (it.end - it.start).coerceAtLeast(1)).coerceIn(0f, 1f) },
+    )
 }
 
 // --- Recherche -----------------------------------------------------------------------------------

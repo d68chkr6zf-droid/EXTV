@@ -315,6 +315,8 @@ fun PosterCard(
     focusRequester: FocusRequester? = null,
     onLongClick: (() -> Unit)? = null,
     favorite: Boolean = false,
+    subtitle: String? = null,
+    progress: Float? = null,
 ) {
     FocusTile(
         onClick = onClick,
@@ -339,7 +341,12 @@ fun PosterCard(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
                     .padding(start = 8.dp, end = 8.dp, top = 22.dp, bottom = 8.dp),
             ) {
-                Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Column {
+                    Text(title, maxLines = if (subtitle == null) 2 else 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    // Chaînes : programme en cours (EPG) et avancement.
+                    if (subtitle != null) Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color(0xFFD8D2DC))
+                    if (progress != null) ThinProgress(progress, Modifier.fillMaxWidth().padding(top = 4.dp))
+                }
             }
             formatRating(rating)?.let { r ->
                 Text(
