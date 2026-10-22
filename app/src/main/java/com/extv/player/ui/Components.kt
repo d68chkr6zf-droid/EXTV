@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -231,7 +233,46 @@ fun FocusTile(
             .border(2.dp, if (focused) C.Accent else Color.Transparent, shape)
             .then(if (onLongClick != null) Modifier.okLongPress(onClick, onLongClick) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-    ) { content(focused) }
+    ) { CompositionLocalProvider(LocalTileFocused provides focused) { content(focused) } }
+}
+
+/** Vrai à l'intérieur d'une [FocusTile] qui a le focus. */
+val LocalTileFocused = compositionLocalOf { false }
+
+/**
+ * Texte d'une ligne dans une [FocusTile] : s'il est trop long, il défile jusqu'au bout tant que la tuile
+ * a le focus (les autres restent coupés par « … » pour ne pas agiter l'écran).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.focusMarquee(): Modifier =
+    if (LocalTileFocused.current) basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 800, repeatDelayMillis = 1500, velocity = 45.dp) else this
+
+/**
+ * Texte de plusieurs lignes dans une [FocusTile] : coupé comme d'habitude, mais quand la tuile a le focus
+ * et que le texte ne tient pas, il passe sur une seule ligne qui défile jusqu'au bout.
+ */
+@Composable
+fun TileText(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 2,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+) {
+    var cut by remember(text) { mutableStateOf(false) }
+    val scroll = cut && LocalTileFocused.current
+    Text(
+        text,
+        if (scroll) modifier.focusMarquee() else modifier,
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        maxLines = if (scroll) 1 else maxLines,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { if (!scroll) cut = it.hasVisualOverflow },
+    )
 }
 
 /**
@@ -342,9 +383,9 @@ fun PosterCard(
                     .padding(start = 8.dp, end = 8.dp, top = 22.dp, bottom = 8.dp),
             ) {
                 Column {
-                    Text(title, maxLines = if (subtitle == null) 2 else 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    TileText(title, maxLines = if (subtitle == null) 2 else 1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                     // Chaînes : programme en cours (EPG) et avancement.
-                    if (subtitle != null) Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color(0xFFD8D2DC))
+                    if (subtitle != null) Text(subtitle, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color(0xFFD8D2DC))
                     if (progress != null) ThinProgress(progress, Modifier.fillMaxWidth().padding(top = 4.dp))
                 }
             }
@@ -470,7 +511,7 @@ fun CategorySidebar(
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             e.category.name.uppercase(),
-                            Modifier.weight(1f),
+                            Modifier.weight(1f).focusMarquee(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,

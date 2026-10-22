@@ -196,9 +196,9 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
                 ChannelLogo(ch, Modifier.fillMaxSize().padding(4.dp))
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(ch.name, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 if (current != null) {
-                    Text(current.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = C.TextDim)
+                    Text(current.title, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = C.TextDim)
                     ThinProgress(programFraction(current, now), Modifier.fillMaxWidth().padding(top = 4.dp))
                 }
             }
@@ -334,22 +334,20 @@ private fun GuideRow(ch: LiveChannel, wide: Boolean, onClick: () -> Unit) {
     FocusTile(onClick = onClick, modifier = Modifier.fillMaxWidth(), normalColor = C.Surface, focusScale = 1.01f) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             ChannelLogo(ch, Modifier.size(52.dp, 36.dp))
-            Text(
+            TileText(
                 ch.name,
                 Modifier.width(if (wide) 190.dp else 110.dp).padding(horizontal = 10.dp),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                Text(current?.let { "${formatHour(it.start)}  ${it.title}" } ?: "Pas d'information", maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+                Text(current?.let { "${formatHour(it.start)}  ${it.title}" } ?: "Pas d'information", Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
                 current?.let { ThinProgress(programFraction(it, now), Modifier.fillMaxWidth().padding(top = 4.dp)) }
             }
             if (wide) {
                 Text(
                     next?.let { "${formatHour(it.start)}  ${it.title}" } ?: "",
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).focusMarquee(),
                     color = C.TextDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -399,7 +397,7 @@ fun ReplayScreen(onChannel: (LiveChannel) -> Unit) {
                             ) {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(painterResource(R.drawable.ic_replay), contentDescription = null, tint = C.Accent, modifier = Modifier.size(26.dp))
-                                    Text(e.category.name.uppercase(), Modifier.weight(1f).padding(horizontal = 14.dp), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(e.category.name.uppercase(), Modifier.weight(1f).padding(horizontal = 14.dp).focusMarquee(), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text("${e.count ?: 0}", color = C.TextDim)
                                     Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = C.TextDim)
                                 }
@@ -428,7 +426,7 @@ fun ReplayScreen(onChannel: (LiveChannel) -> Unit) {
                             Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 ChannelLogo(ch, Modifier.size(60.dp, 40.dp))
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(ch.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                    Text(ch.name, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                                     if (ch.archiveDays > 0) Text("${ch.archiveDays} jours de replay", color = C.TextDim, fontSize = 12.sp)
                                 }
                                 Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = C.TextDim)
@@ -484,15 +482,15 @@ fun CatchupScreen() {
                             if (compact) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text("${formatDay(p.start)} · ${formatHour(p.start)} - ${formatHour(p.end)}", color = C.Accent, fontSize = 13.sp)
-                                    Text(p.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                    TileText(p.title, fontWeight = FontWeight.SemiBold)
                                 }
                             } else {
                                 Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                                     Text(formatDay(p.start), Modifier.width(130.dp), color = C.TextDim)
                                     Text("${formatHour(p.start)} - ${formatHour(p.end)}", Modifier.width(130.dp), color = C.Accent)
                                     Column(Modifier.weight(1f)) {
-                                        Text(p.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                        if (p.description.isNotBlank()) Text(p.description, color = C.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(p.title, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                        if (p.description.isNotBlank()) Text(p.description, Modifier.focusMarquee(), color = C.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }

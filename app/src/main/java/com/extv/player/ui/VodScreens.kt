@@ -438,9 +438,9 @@ fun SeriesDetailScreen() {
                                 )
                             }
                             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                Text(ep.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                TileText(ep.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 if (pos > 0) Text("Reprendre à ${formatDuration(pos)}", color = C.Accent, fontSize = 12.sp)
-                                else ep.plot?.let { Text(it, color = C.TextDim, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                else ep.plot?.let { TileText(it, color = C.TextDim, fontSize = 12.sp) }
                             }
                         }
                     }

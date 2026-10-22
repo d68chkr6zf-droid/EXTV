@@ -159,7 +159,7 @@ private fun ChannelPicker(onDismiss: () -> Unit, onPick: (LiveChannel) -> Unit) 
                         FocusTile(onClick = { onPick(ch) }, modifier = Modifier.fillMaxWidth(), normalColor = Color.Transparent, focusScale = 1f) {
                             Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 AsyncImage(model = ch.logo, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.size(48.dp, 32.dp))
-                                Text(ch.name, Modifier.padding(start = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(ch.name, Modifier.padding(start = 10.dp).focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }

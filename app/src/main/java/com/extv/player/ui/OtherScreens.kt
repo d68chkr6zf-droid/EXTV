@@ -462,7 +462,7 @@ private fun SettingRow(label: String, value: String, focusRequester: FocusReques
     FocusTile(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), focusRequester = focusRequester) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text(label, Modifier.weight(1f))
-            Text(value, color = C.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value, Modifier.focusMarquee(), color = C.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -509,7 +509,7 @@ fun LockedCategoriesScreen() {
                                 Modifier.width(80.dp),
                                 color = C.TextDim,
                             )
-                            Text(c.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(c.name, Modifier.weight(1f).focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (auto) Text("auto", color = C.TextDim)
                         }
                     }
