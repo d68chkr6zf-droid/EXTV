@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -114,10 +115,14 @@ private fun <T> CatalogScreen(
     val size = windowSize()
     val wide = size != WindowSize.Compact
     val entries = rememberLoader(Unit) { loadEntries() }
-    var selected by remember { mutableStateOf<Category?>(null) }
+    // Gardés en revenant d'une fiche (bande-annonce, lecture) : catégorie, recherche et dernière affiche ouverte.
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastOpened by rememberSaveable { mutableStateOf<String?>(null) }
     val firstCategory = remember { FocusRequester() }
-    val select = rememberCategoryGate { selected = it }
-    var query by remember { mutableStateOf("") }
+    val returnFocus = remember { FocusRequester() }
+    val returned = remember { booleanArrayOf(false) }
+    val select = rememberCategoryGate { selectedId = it.id }
+    var query by rememberSaveable { mutableStateOf("") }
     // Appui long : menu de l'affiche ; « Déplacer » range les favoris (dans la catégorie Favoris).
     var menuFor by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<String?>(null) }
@@ -138,7 +143,8 @@ private fun <T> CatalogScreen(
             LaunchedEffect(Unit) {
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
+            val category = list.firstOrNull { it.category.id == selectedId }?.category
+                ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
             val q = query.normalized().trim()
             val inFavorites = category?.id == Category.FAVORITES && q.isEmpty()
             LaunchedEffect(category?.id, q) { mover.reset() }
@@ -178,6 +184,16 @@ private fun <T> CatalogScreen(
                                 mover.start(loaded, id)
                             }
                         }
+                        // Retour d'une fiche : on retrouve l'affiche ouverte, avec le focus dessus (une seule fois).
+                        LaunchedEffect(loaded) {
+                            if (returned[0]) return@LaunchedEffect
+                            returned[0] = true
+                            val i = lastOpened?.let { id -> all.indexOfFirst { key(it) == id } } ?: -1
+                            if (i < 0) return@LaunchedEffect
+                            gridState.scrollToItem(i)
+                            withFrameNanos { }
+                            runCatching { returnFocus.requestFocus() }
+                        }
                         // L'affiche déplacée reste visible et garde le focus.
                         LaunchedEffect(mover.movingId, mover.order) {
                             val i = mover.index()
@@ -211,7 +227,10 @@ private fun <T> CatalogScreen(
                                     PosterCard(
                                         name(item),
                                         image(item),
-                                        onClick = { onOpen(item) },
+                                        onClick = {
+                                            lastOpened = key(item)
+                                            onOpen(item)
+                                        },
                                         modifier = Modifier.animateItem().moveKeys(
                                             active = moving,
                                             onMove = { d ->
@@ -230,7 +249,7 @@ private fun <T> CatalogScreen(
                                                 toast("Favoris rangés")
                                             },
                                         ),
-                                        focusRequester = if (moving) moveFocus else null,
+                                        focusRequester = if (moving) moveFocus else if (key(item) == lastOpened) returnFocus else null,
                                         rating = rating(item),
                                         onLongClick = { if (!mover.active) menuFor = key(item) },
                                         favorite = isFav,
@@ -249,7 +268,7 @@ private fun <T> CatalogScreen(
                                                         } else {
                                                             pendingMove = key(item)
                                                             query = ""
-                                                            list.firstOrNull { it.category.id == Category.FAVORITES }?.let { selected = it.category }
+                                                            list.firstOrNull { it.category.id == Category.FAVORITES }?.let { selectedId = it.category.id }
                                                         }
                                                     },
                                                     onDismiss = { menuFor = null },
