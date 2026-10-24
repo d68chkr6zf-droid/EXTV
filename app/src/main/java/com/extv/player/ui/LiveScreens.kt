@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -33,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +45,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,7 +87,7 @@ private fun programFraction(p: EpgProgram, now: Long): Float =
 
 /**
  * TV / tablette : catégories | chaînes (programme en cours) | aperçu vidéo + guide.
- * Un clic lance l'aperçu, un second clic passe en plein écran. Appui long : favori.
+ * Un clic lance l'aperçu, un second clic passe en plein écran. Appui long : menu favori / déplacer.
  * Smartphone : catégories en pastilles et lecture directe en plein écran.
  */
 @Composable
@@ -101,6 +105,12 @@ fun LiveScreen() {
     var muted by remember { mutableStateOf(false) }
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
+    // Appui long : menu de la chaîne ; « Déplacer » range les favoris (dans la catégorie Favoris).
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var pendingMove by remember { mutableStateOf<String?>(null) }
+    val mover = remember { FavoriteMover<LiveChannel>(ContentType.LIVE) { it.id } }
+    val moveFocus = remember { FocusRequester() }
+    BackHandler(enabled = mover.active) { mover.cancel() }
 
     fun toggleFavorite(ch: LiveChannel) {
         val fav = app.store.toggleFavorite(ch.toFavorite())
@@ -119,20 +129,75 @@ fun LiveScreen() {
             }
             val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
             val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
+            val inFavorites = category?.id == Category.FAVORITES
+            LaunchedEffect(category?.id) { mover.reset() }
 
             val channelList: @Composable (Modifier) -> Unit = { m ->
-                LoadView(channels, m) { chs ->
+                LoadView(channels, m) { loaded ->
+                    val chs = mover.display(loaded)
+                    val listState = rememberLazyListState()
+                    // « Déplacer » choisi hors de la catégorie Favoris : on y passe, puis le déplacement commence.
+                    LaunchedEffect(loaded, pendingMove) {
+                        val id = pendingMove
+                        if (id != null && inFavorites) {
+                            pendingMove = null
+                            mover.start(loaded, id)
+                        }
+                    }
+                    // La chaîne déplacée reste visible et garde le focus.
+                    LaunchedEffect(mover.movingId, mover.order) {
+                        val i = mover.index()
+                        if (i < 0) return@LaunchedEffect
+                        val visible = listState.layoutInfo.visibleItemsInfo
+                        if (visible.size < 3 || i <= visible.first().index || i >= visible.last().index) {
+                            listState.scrollToItem((i - 1).coerceAtLeast(0))
+                        }
+                        withFrameNanos { }
+                        runCatching { moveFocus.requestFocus() }
+                    }
                     if (chs.isEmpty()) {
                         Box(m, contentAlignment = Alignment.Center) { Text("Aucune chaîne dans cette catégorie", color = C.TextDim) }
                     } else {
-                        LazyColumn(m, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(4.dp)) {
-                            itemsIndexed(chs, key = { i, c -> "$i-${c.id}" }) { i, ch ->
+                        LazyColumn(m, state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(4.dp)) {
+                            // Favoris : clé stable par chaîne pour que le focus suive la chaîne déplacée.
+                            itemsIndexed(chs, key = { i, c -> if (inFavorites) c.id else "$i-${c.id}" }) { i, ch ->
+                                val itemKey = if (inFavorites) ch.id else "$i-${ch.id}"
+                                val moving = mover.isMoving(ch)
                                 ChannelRow(
                                     ch,
                                     favVersion = favVersion,
                                     isPreviewing = ch.id == previewing?.id,
+                                    modifier = Modifier.animateItem().moveKeys(
+                                        active = moving,
+                                        onMove = { d ->
+                                            if (d == MoveDir.UP) mover.shift(-1) else if (d == MoveDir.DOWN) mover.shift(1)
+                                        },
+                                        onDone = {
+                                            mover.commit()
+                                            toast("Favoris rangés")
+                                        },
+                                    ),
+                                    focusRequester = if (moving) moveFocus else null,
+                                    moving = moving,
                                     onFocus = { focused = ch },
-                                    onLongClick = { toggleFavorite(ch) },
+                                    onLongClick = { if (!mover.active) menuFor = itemKey },
+                                    menu = {
+                                        if (menuFor == itemKey) {
+                                            FavoriteMenu(
+                                                isFavorite = app.store.isFavorite(Favorite.keyOf(ContentType.LIVE, ch.id)),
+                                                onToggle = { toggleFavorite(ch) },
+                                                onMove = {
+                                                    if (inFavorites) {
+                                                        mover.start(chs, ch.id)
+                                                    } else {
+                                                        pendingMove = ch.id
+                                                        list.firstOrNull { it.category.id == Category.FAVORITES }?.let { selected = it.category }
+                                                    }
+                                                },
+                                                onDismiss = { menuFor = null },
+                                            )
+                                        }
+                                    },
                                     onClick = {
                                         if (wide && previewing?.id != ch.id) {
                                             previewing = ch
@@ -145,6 +210,7 @@ fun LiveScreen() {
                             }
                         }
                     }
+                    if (mover.active) MoveHint("▲ ▼")
                 }
             }
 
@@ -176,7 +242,18 @@ fun LiveScreen() {
 }
 
 @Composable
-private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, onFocus: () -> Unit, onLongClick: () -> Unit, onClick: () -> Unit) {
+private fun ChannelRow(
+    ch: LiveChannel,
+    favVersion: Int,
+    isPreviewing: Boolean,
+    onFocus: () -> Unit,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    moving: Boolean = false,
+    menu: @Composable BoxScope.() -> Unit = {},
+) {
     val repo = App.instance.repository() ?: return
     val isFav = remember(ch.id, favVersion) { App.instance.store.isFavorite(Favorite.keyOf(ContentType.LIVE, ch.id)) }
     val now = rememberNow(60_000)
@@ -186,10 +263,12 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
         onClick = onClick,
         onFocus = onFocus,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
+        focusRequester = focusRequester,
         selected = isPreviewing,
         normalColor = C.Surface,
         focusScale = 1.02f,
+        moving = moving,
     ) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(64.dp, 42.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2A2630)), contentAlignment = Alignment.Center) {
@@ -203,8 +282,10 @@ private fun ChannelRow(ch: LiveChannel, favVersion: Int, isPreviewing: Boolean, 
                 }
             }
             if (ch.hasArchive) Icon(painterResource(R.drawable.ic_replay), contentDescription = "Replay", tint = C.TextDim, modifier = Modifier.size(16.dp))
-            if (isFav) Text(" ★", color = C.Accent)
+            if (moving) Text("▲\n▼", color = C.Accent, fontSize = 14.sp, lineHeight = 15.sp, textAlign = TextAlign.Center)
+            else if (isFav) Text(" ★", color = C.Accent)
         }
+        menu()
     }
 }
 

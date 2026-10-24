@@ -206,10 +206,19 @@ fun FocusTile(
     selectedColor: Color = C.Selected,
     focusScale: Float = 1.04f,
     transformOrigin: TransformOrigin = TransformOrigin.Center,
+    /** Favori en cours de déplacement : cadre doré plus épais et plus grand. */
+    moving: Boolean = false,
     content: @Composable BoxScope.(focused: Boolean) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "scale")
+    val scale by animateFloatAsState(
+        when {
+            moving -> maxOf(focusScale, 1.05f)
+            focused -> focusScale
+            else -> 1f
+        },
+        label = "scale",
+    )
     Box(
         modifier
             .graphicsLayer {
@@ -230,7 +239,7 @@ fun FocusTile(
                     else -> normalColor
                 },
             )
-            .border(2.dp, if (focused) C.Accent else Color.Transparent, shape)
+            .border(if (moving) 3.dp else 2.dp, if (focused || moving) C.Accent else Color.Transparent, shape)
             .then(if (onLongClick != null) Modifier.okLongPress(onClick, onLongClick) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) { CompositionLocalProvider(LocalTileFocused provides focused) { content(focused) } }
@@ -358,12 +367,17 @@ fun PosterCard(
     favorite: Boolean = false,
     subtitle: String? = null,
     progress: Float? = null,
+    /** Flèches affichées pendant le déplacement du favori (null : pas en déplacement). */
+    moveArrows: String? = null,
+    /** Menu de l'appui long (voir [FavoriteMenu]), ancré sur l'affiche. */
+    menu: @Composable BoxScope.() -> Unit = {},
 ) {
     FocusTile(
         onClick = onClick,
         modifier = modifier,
         focusRequester = focusRequester,
         onLongClick = onLongClick,
+        moving = moveArrows != null,
         shape = RoundedCornerShape(10.dp),
         focusScale = 1.07f,
         normalColor = C.Surface2,
@@ -411,7 +425,19 @@ fun PosterCard(
                     fontWeight = FontWeight.Bold,
                 )
             }
+            if (moveArrows != null) {
+                Text(
+                    moveArrows,
+                    Modifier.align(Alignment.Center)
+                        .background(Color(0xCC000000), RoundedCornerShape(50))
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
+                    color = C.Accent,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
+        menu()
     }
 }
 

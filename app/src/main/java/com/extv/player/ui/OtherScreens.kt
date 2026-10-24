@@ -1,6 +1,8 @@
 package com.extv.player.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -71,6 +75,17 @@ fun FavoritesScreen(
     var favorites by remember { mutableStateOf(app.store.favorites().filter { it.type in types }) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { favorites = app.store.favorites().filter { it.type in types } }
     var message by remember { mutableStateOf<String?>(null) }
+    val toast = rememberToast()
+    // Appui long : menu (retirer / déplacer) ; un déplacement par type de favori.
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    val movers = remember { ContentType.values().associateWith { t -> FavoriteMover<Favorite>(t) { it.id } } }
+    val moving = movers.values.firstOrNull { it.active }
+    val moveFocus = remember { FocusRequester() }
+    BackHandler(enabled = moving != null) { moving?.cancel() }
+
+    fun reload() {
+        favorites = app.store.favorites().filter { it.type in types }
+    }
 
     fun open(f: Favorite) {
         scope.launch {
@@ -115,38 +130,95 @@ fun FavoritesScreen(
             ContentType.MOVIE to "Films",
             ContentType.SERIES to "Séries",
         ).forEach { (type, label) ->
-            val list = favorites.filter { it.type == type }
+            val mover = movers.getValue(type)
+            val list = mover.display(favorites.filter { it.type == type })
             if (list.isNotEmpty()) {
                 val requester = if (!firstAssigned) first else null
                 firstAssigned = true
+                val rowState = rememberLazyListState()
+                // Le favori déplacé reste visible et garde le focus.
+                LaunchedEffect(mover.movingId, mover.order) {
+                    val i = mover.index()
+                    if (i < 0) return@LaunchedEffect
+                    val visible = rowState.layoutInfo.visibleItemsInfo
+                    if (visible.size < 3 || i <= visible.first().index || i >= visible.last().index) {
+                        rowState.scrollToItem((i - 1).coerceAtLeast(0))
+                    }
+                    withFrameNanos { }
+                    runCatching { moveFocus.requestFocus() }
+                }
                 Text(label, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 12.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    itemsIndexed(list) { i, f ->
+                LazyRow(state = rowState, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    itemsIndexed(list, key = { _, f -> f.key }) { i, f ->
+                        val isMoving = mover.isMoving(f)
+                        val cardModifier = Modifier.animateItem().moveKeys(
+                            active = isMoving,
+                            onMove = { d -> if (d == MoveDir.LEFT) mover.shift(-1) else if (d == MoveDir.RIGHT) mover.shift(1) },
+                            onDone = {
+                                mover.commit()
+                                mover.reset()
+                                reload()
+                                toast("Favoris rangés")
+                            },
+                        )
+                        val focusRequester = if (isMoving) moveFocus else if (i == 0) requester else null
+                        val onLongClick = { if (moving == null) menuFor = f.key }
+                        val menu: @Composable BoxScope.() -> Unit = {
+                            if (menuFor == f.key) {
+                                FavoriteMenu(
+                                    isFavorite = true,
+                                    onToggle = {
+                                        app.store.toggleFavorite(f)
+                                        reload()
+                                        toast("Retiré des favoris")
+                                    },
+                                    onMove = { mover.start(list, f.id) },
+                                    onDismiss = { menuFor = null },
+                                )
+                            }
+                        }
                         if (type == ContentType.LIVE) {
                             FavoriteChannelCard(
                                 f,
                                 liveById?.get(f.id),
                                 onClick = { open(f) },
-                                focusRequester = if (i == 0) requester else null,
+                                focusRequester = focusRequester,
+                                modifier = cardModifier,
+                                onLongClick = onLongClick,
+                                moving = isMoving,
+                                menu = menu,
                             )
                         } else PosterCard(
                             f.name,
                             f.image,
                             onClick = { open(f) },
-                            modifier = Modifier.width(150.dp),
-                            focusRequester = if (i == 0) requester else null,
+                            modifier = cardModifier.width(150.dp),
+                            focusRequester = focusRequester,
+                            onLongClick = onLongClick,
+                            moveArrows = if (isMoving) "◀ ▶" else null,
+                            menu = menu,
                         )
                     }
                 }
             }
         }
         LaunchedEffect(favorites.isNotEmpty()) { if (favorites.isNotEmpty()) runCatching { first.requestFocus() } }
+        if (moving != null) MoveHint("◀ ▶")
     }
 }
 
 /** Vignette d'une chaîne favorite avec le programme en cours (seules les vignettes affichées chargent leur EPG). */
 @Composable
-private fun FavoriteChannelCard(f: Favorite, channel: LiveChannel?, onClick: () -> Unit, focusRequester: FocusRequester?) {
+private fun FavoriteChannelCard(
+    f: Favorite,
+    channel: LiveChannel?,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester?,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    moving: Boolean = false,
+    menu: @Composable BoxScope.() -> Unit = {},
+) {
     val repo = App.instance.repository()
     val now = rememberNow(60_000)
     val programs = rememberLoader(channel?.id) {
@@ -157,10 +229,13 @@ private fun FavoriteChannelCard(f: Favorite, channel: LiveChannel?, onClick: () 
         f.name,
         f.image,
         onClick = onClick,
-        modifier = Modifier.width(170.dp),
+        modifier = modifier.width(170.dp),
         aspect = 16f / 10f,
         fit = true,
         focusRequester = focusRequester,
+        onLongClick = onLongClick,
+        moveArrows = if (moving) "◀ ▶" else null,
+        menu = menu,
         subtitle = current?.title?.ifBlank { null },
         progress = current?.let { ((now - it.start).toFloat() / (it.end - it.start).coerceAtLeast(1)).coerceIn(0f, 1f) },
     )

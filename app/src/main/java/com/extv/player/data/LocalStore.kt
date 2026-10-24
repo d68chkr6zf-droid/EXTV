@@ -50,6 +50,21 @@ class LocalStore(private val prefs: SharedPreferences) {
         return !exists
     }
 
+    /**
+     * Range les favoris d'un type dans l'ordre donné (identifiants). Les favoris absents de la liste
+     * (catégorie verrouillée, chaîne disparue…) gardent leur place.
+     */
+    fun reorderFavorites(type: ContentType, orderedIds: List<String>) {
+        val list = favorites().toMutableList()
+        val wanted = orderedIds.toHashSet()
+        val slots = list.indices.filter { list[it].type == type && list[it].id in wanted }
+        val byId = slots.associate { list[it].id to list[it] }
+        val ordered = orderedIds.distinct().mapNotNull { byId[it] }
+        if (ordered.size != slots.size) return
+        slots.forEachIndexed { n, i -> list[i] = ordered[n] }
+        writeArray(scoped("fav"), list.map { it.toJson() })
+    }
+
     /** Favoris du compte actif au format JSON, pour la sauvegarde sur le boîtier. */
     fun exportFavorites(): String =
         JSONObject().put("app", "EXTV").put("version", 1).put("favorites", JSONArray(favorites().map { it.toJson() })).toString(2)

@@ -1,5 +1,6 @@
 package com.extv.player.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +33,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -115,6 +118,12 @@ private fun <T> CatalogScreen(
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
     var query by remember { mutableStateOf("") }
+    // Appui long : menu de l'affiche ; « Déplacer » range les favoris (dans la catégorie Favoris).
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var pendingMove by remember { mutableStateOf<String?>(null) }
+    val mover = remember { FavoriteMover(if (title == "Séries") ContentType.SERIES else ContentType.MOVIE, key) }
+    val moveFocus = remember { FocusRequester() }
+    BackHandler(enabled = mover.active) { mover.cancel() }
     // Index de recherche (noms normalisés) préparé une seule fois, en arrière-plan, dès l'ouverture de l'écran.
     val searchIndex = remember {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
@@ -131,6 +140,8 @@ private fun <T> CatalogScreen(
             }
             val category = selected ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
             val q = query.normalized().trim()
+            val inFavorites = category?.id == Category.FAVORITES && q.isEmpty()
+            LaunchedEffect(category?.id, q) { mover.reset() }
             // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
             val items = rememberLoader(category?.id, q) {
                 if (q.isEmpty()) {
@@ -156,11 +167,33 @@ private fun <T> CatalogScreen(
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
-                    LoadView(items) { all ->
+                    LoadView(items) { loaded ->
+                        val all = mover.display(loaded)
+                        val gridState = rememberLazyGridState()
+                        // « Déplacer » choisi hors de la catégorie Favoris : on y passe, puis le déplacement commence.
+                        LaunchedEffect(loaded, pendingMove) {
+                            val id = pendingMove
+                            if (id != null && inFavorites) {
+                                pendingMove = null
+                                mover.start(loaded, id)
+                            }
+                        }
+                        // L'affiche déplacée reste visible et garde le focus.
+                        LaunchedEffect(mover.movingId, mover.order) {
+                            val i = mover.index()
+                            if (i < 0) return@LaunchedEffect
+                            val visible = gridState.layoutInfo.visibleItemsInfo
+                            if (visible.none { it.index == i } || i < visible.first().index + 1 || i > visible.last().index - 1) {
+                                gridState.scrollToItem(i)
+                            }
+                            withFrameNanos { }
+                            runCatching { moveFocus.requestFocus() }
+                        }
                         if (all.isEmpty()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucun résultat dans TOUT" else "Aucun contenu", color = C.TextDim) }
                         } else {
                             LazyVerticalGrid(
+                                state = gridState,
                                 // TV : lignes de 4 affiches ; smartphone et tablette : selon la largeur.
                                 columns = when (size) {
                                     WindowSize.Compact -> GridCells.Adaptive(104.dp)
@@ -174,20 +207,60 @@ private fun <T> CatalogScreen(
                                 items(all, key = key) { item ->
                                     val favKey = favorite(item).key
                                     var isFav by remember(favKey) { mutableStateOf(store.isFavorite(favKey)) }
+                                    val moving = mover.isMoving(item)
                                     PosterCard(
                                         name(item),
                                         image(item),
                                         onClick = { onOpen(item) },
+                                        modifier = Modifier.animateItem().moveKeys(
+                                            active = moving,
+                                            onMove = { d ->
+                                                val columns = (gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1
+                                                mover.shift(
+                                                    when (d) {
+                                                        MoveDir.LEFT -> -1
+                                                        MoveDir.RIGHT -> 1
+                                                        MoveDir.UP -> -columns
+                                                        MoveDir.DOWN -> columns
+                                                    },
+                                                )
+                                            },
+                                            onDone = {
+                                                mover.commit()
+                                                toast("Favoris rangés")
+                                            },
+                                        ),
+                                        focusRequester = if (moving) moveFocus else null,
                                         rating = rating(item),
-                                        onLongClick = {
-                                            isFav = store.toggleFavorite(favorite(item))
-                                            toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
-                                        },
+                                        onLongClick = { if (!mover.active) menuFor = key(item) },
                                         favorite = isFav,
+                                        moveArrows = if (moving) "◀ ▲ ▼ ▶" else null,
+                                        menu = {
+                                            if (menuFor == key(item)) {
+                                                FavoriteMenu(
+                                                    isFavorite = isFav,
+                                                    onToggle = {
+                                                        isFav = store.toggleFavorite(favorite(item))
+                                                        toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
+                                                    },
+                                                    onMove = {
+                                                        if (inFavorites) {
+                                                            mover.start(all, key(item))
+                                                        } else {
+                                                            pendingMove = key(item)
+                                                            query = ""
+                                                            list.firstOrNull { it.category.id == Category.FAVORITES }?.let { selected = it.category }
+                                                        }
+                                                    },
+                                                    onDismiss = { menuFor = null },
+                                                )
+                                            }
+                                        },
                                     )
                                 }
                             }
                         }
+                        if (mover.active) MoveHint("◀ ▲ ▼ ▶")
                     }
                 }
             }
