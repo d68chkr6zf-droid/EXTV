@@ -774,7 +774,7 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val NEXT_WINDOW_MS = 5 * 60_000L
         private const val NEXT_SHOW_MS = 20_000L
-        private const val NEXT_HIDE_MS = 30_000L
+        private const val NEXT_HIDE_MS = 40_000L
         private const val NEXT_PLAIN_COUNT = 2
         private const val NEXT_FADE_MS = 1500
         private val SCALES = listOf(
