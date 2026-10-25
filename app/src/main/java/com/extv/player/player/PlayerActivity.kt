@@ -366,6 +366,10 @@ class PlayerActivity : ComponentActivity() {
             return (NEXT_WINDOW_MS - remaining) % (NEXT_SHOW_MS + NEXT_HIDE_MS) < NEXT_SHOW_MS
         }
 
+    /** Rappel encadré de doré à partir de la [NEXT_PLAIN_COUNT]+1-ième apparition (les premières restent sans cadre). */
+    private val nextFramed: Boolean
+        get() = (NEXT_WINDOW_MS - (lengthMs - timeMs)) / (NEXT_SHOW_MS + NEXT_HIDE_MS) >= NEXT_PLAIN_COUNT
+
     /** Épisode pour lequel l'utilisateur a choisi de regarder le générique (touche Retour). */
     private var creditsFor by mutableIntStateOf(-1)
     private val nextShown: Boolean get() = nextAvailable && creditsFor != index && !menuVisible
@@ -634,14 +638,15 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             if (nextShown) {
-                // Petite étiquette semi-transparente à liseré doré pointillé ; OK lance l'épisode suivant.
+                // Petite étiquette semi-transparente (liseré doré pointillé après les premières apparitions) ; OK lance l'épisode suivant.
                 val gold = C.Accent.copy(alpha = 0.75f)
+                val framed = nextFramed
                 Text(
                     "Épisode suivant : press OK",
                     Modifier.align(Alignment.BottomEnd)
                         .padding(32.dp)
                         .drawBehind {
-                            drawRoundRect(
+                            if (framed) drawRoundRect(
                                 gold,
                                 cornerRadius = CornerRadius(10.dp.toPx()),
                                 style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
@@ -768,6 +773,7 @@ class PlayerActivity : ComponentActivity() {
         private const val NEXT_WINDOW_MS = 5 * 60_000L
         private const val NEXT_SHOW_MS = 20_000L
         private const val NEXT_HIDE_MS = 30_000L
+        private const val NEXT_PLAIN_COUNT = 2
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
