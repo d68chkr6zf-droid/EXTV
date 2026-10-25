@@ -59,6 +59,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -350,9 +353,18 @@ class PlayerActivity : ComponentActivity() {
         if (mediaPlayer.volume <= 0) mediaPlayer.setVolume(100)
     }
 
-    /** Bouton « Épisode suivant » : affiché pendant les [NEXT_BUTTON_MS] dernières millisecondes d'un épisode. */
+    /**
+     * Rappel « Épisode suivant » : pendant les [NEXT_WINDOW_MS] dernières millisecondes d'un épisode,
+     * visible [NEXT_SHOW_MS] puis masqué [NEXT_HIDE_MS], en boucle jusqu'à la fin (la fin réelle de
+     * l'épisode n'étant pas connue, générique compris). Rien si la durée est inconnue ou sans épisode suivant.
+     */
     private val nextAvailable: Boolean
-        get() = !live && index < items.lastIndex && lengthMs > 0 && lengthMs - timeMs in 1..NEXT_BUTTON_MS
+        get() {
+            if (live || index >= items.lastIndex || lengthMs <= 0) return false
+            val remaining = lengthMs - timeMs
+            if (remaining !in 1..NEXT_WINDOW_MS) return false
+            return (NEXT_WINDOW_MS - remaining) % (NEXT_SHOW_MS + NEXT_HIDE_MS) < NEXT_SHOW_MS
+        }
 
     /** Épisode pour lequel l'utilisateur a choisi de regarder le générique (touche Retour). */
     private var creditsFor by mutableIntStateOf(-1)
@@ -443,7 +455,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (nextShown && event.keyCode == KeyEvent.KEYCODE_BACK) {
-            // Retour masque le bouton (pour finir l'épisode tranquillement).
+            // Retour masque le rappel (pour finir l'épisode tranquillement).
             if (event.action == KeyEvent.ACTION_UP) creditsFor = index
             return true
         }
@@ -622,24 +634,28 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
             if (nextShown) {
-                // Bouton discret et semi-transparent pendant les 3 dernières minutes, sans compte à rebours.
-                val next = items.getOrNull(index + 1)
-                Column(
+                // Petite étiquette semi-transparente à liseré doré pointillé ; OK lance l'épisode suivant.
+                val gold = C.Accent.copy(alpha = 0.75f)
+                Text(
+                    "Épisode suivant : press OK",
                     Modifier.align(Alignment.BottomEnd)
-                        .padding(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x66000000))
+                        .padding(32.dp)
+                        .drawBehind {
+                            drawRoundRect(
+                                gold,
+                                cornerRadius = CornerRadius(10.dp.toPx()),
+                                style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
+                            )
+                        }
+                        .padding(5.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x47000000))
                         .clickable { playNext() }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    Text("▶  Épisode suivant", color = Color(0xDDFFFFFF), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        (next?.title?.let { "$it  ·  " } ?: "") + "OK",
-                        color = Color(0x99FFFFFF),
-                        fontSize = 12.sp,
-                    )
-                }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    color = Color(0x9EFFFFFF),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
             if (menuVisible) OptionsMenu(Modifier.align(Alignment.CenterEnd))
         }
@@ -749,7 +765,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NEXT_BUTTON_MS = 3 * 60_000L
+        private const val NEXT_WINDOW_MS = 5 * 60_000L
+        private const val NEXT_SHOW_MS = 20_000L
+        private const val NEXT_HIDE_MS = 30_000L
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
