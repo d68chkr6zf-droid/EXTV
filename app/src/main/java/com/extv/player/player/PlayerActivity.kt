@@ -59,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.ExitTransition
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.draw.drawBehind
@@ -637,14 +639,14 @@ class PlayerActivity : ComponentActivity() {
                     }
                 }
             }
-            if (nextShown) {
+            // Apparition en fondu, disparition nette.
+            AnimatedVisibility(nextShown, Modifier.align(Alignment.BottomEnd), enter = fadeIn(tween(NEXT_FADE_MS)), exit = ExitTransition.None) {
                 // Petite étiquette semi-transparente (liseré doré pointillé après les premières apparitions) ; OK lance l'épisode suivant.
                 val gold = C.Accent.copy(alpha = 0.75f)
                 val framed = nextFramed
                 Text(
                     "Épisode suivant : press OK",
-                    Modifier.align(Alignment.BottomEnd)
-                        .padding(32.dp)
+                    Modifier.padding(32.dp)
                         .drawBehind {
                             if (framed) drawRoundRect(
                                 gold,
@@ -774,6 +776,7 @@ class PlayerActivity : ComponentActivity() {
         private const val NEXT_SHOW_MS = 20_000L
         private const val NEXT_HIDE_MS = 30_000L
         private const val NEXT_PLAIN_COUNT = 2
+        private const val NEXT_FADE_MS = 1500
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
