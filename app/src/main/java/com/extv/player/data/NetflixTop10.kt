@@ -186,7 +186,8 @@ object NetflixTop10 {
 
     private const val WIKIDATA = "https://www.wikidata.org/w/api.php"
     private val FILM_WORDS = Regex("film|movie|documentary|animated|special", RegexOption.IGNORE_CASE)
-    private val TV_WORDS = Regex("series|show|sitcom|anime|television|docuseries|reality|drama|telenovela|programme", RegexOption.IGNORE_CASE)
+    private val TV_WORDS = Regex("series|show|sitcom|anime|docuseries|telenovela|miniseries", RegexOption.IGNORE_CASE)
+    private val FILM_OK = Regex("\\b(19|20)\\d{2}\\b|\\bby\\b|directed", RegexOption.IGNORE_CASE)
     private val YEAR = Regex("\\b(19|20)\\d{2}\\b")
     private val NOT_A_WORK = Regex("genre|type of|disambiguation|wikimedia|concept|term\\b|category|topic|list of|style of", RegexOption.IGNORE_CASE)
 
@@ -211,7 +212,10 @@ object NetflixTop10 {
                 val results = getJson(url)?.optJSONArray("search") ?: return@async null
                 val words = if (row.kind == Kind.FILMS) FILM_WORDS else TV_WORDS
                 (0 until results.length()).map { results.getJSONObject(it) }
-                    .firstOrNull { words.containsMatchIn(it.optString("description")) && !NOT_A_WORK.containsMatchIn(it.optString("description")) }
+                    .firstOrNull { r ->
+                        val d = r.optString("description")
+                        words.containsMatchIn(d) && !NOT_A_WORK.containsMatchIn(d) && (row.kind == Kind.TV || FILM_OK.containsMatchIn(d))
+                    }
                     ?.let { it.getString("id") to YEAR.find(it.optString("description"))?.value?.toIntOrNull() }
             }
         }.awaitAll()
