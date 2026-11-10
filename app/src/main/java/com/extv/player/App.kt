@@ -42,6 +42,8 @@ class App : Application() {
         instance = this
         store = LocalStore(this)
         parental = Parental(store)
+        // Top 10 Netflix chargé en arrière-plan dès le lancement (prêt à l'ouverture de Films / Séries).
+        com.extv.player.data.NetflixTop10.prefetch()
         // Compte les allumages de l'écran (TV sortie de veille) : l'alerte de fin d'abonnement se réaffiche.
         androidx.core.content.ContextCompat.registerReceiver(
             this,

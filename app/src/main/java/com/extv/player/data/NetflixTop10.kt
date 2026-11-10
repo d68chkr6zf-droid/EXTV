@@ -46,7 +46,7 @@ object NetflixTop10 {
         "https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv",
         "https://top10.netflix.com/data/all-weeks-countries.tsv",
     )
-    private const val REFRESH_MS = 24L * 3600 * 1000
+    private const val REFRESH_MS = 6L * 3600 * 1000
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -60,8 +60,27 @@ object NetflixTop10 {
 
     private val cacheFile get() = File(App.instance.filesDir, "netflix_top10.json")
 
-    /** Classement de la semaine (vide si indisponible). Ne lève pas d'erreur. */
-    suspend fun entries(): List<Entry> = mutex.withLock {
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    @Volatile private var job: kotlinx.coroutines.Deferred<List<Entry>>? = null
+
+    /** Lance le chargement en arrière-plan (au démarrage de l'appli) pour qu'il soit prêt à l'ouverture de Films / Séries. */
+    fun prefetch() {
+        runCatching { start() }
+    }
+
+    @Synchronized
+    private fun start(): kotlinx.coroutines.Deferred<List<Entry>> {
+        job?.let { if (!it.isCompleted || memory != null) return it }
+        return scope.async { runCatching { load() }.getOrDefault(emptyList()) }.also { job = it }
+    }
+
+    /**
+     * Classement de la semaine (vide si indisponible). Ne lève pas d'erreur. Le chargement continue en
+     * arrière-plan même si l'écran n'attend plus (il sera prêt à la prochaine ouverture).
+     */
+    suspend fun entries(): List<Entry> = start().await()
+
+    private suspend fun load(): List<Entry> = mutex.withLock {
         withContext(Dispatchers.IO) {
             val cached = runCatching { JSONObject(cacheFile.readText()) }.getOrNull()
             val cachedEntries = cached?.optJSONArray("entries")?.let { a ->
@@ -69,11 +88,30 @@ object NetflixTop10 {
             }
             val fresh = cached != null && System.currentTimeMillis() - cached.optLong("checked") < REFRESH_MS
             memory?.let { if (fresh) return@withContext it }
-            if (fresh && cachedEntries != null) return@withContext cachedEntries.also { memory = it }
-            val updated = runCatching { download(cached) }.getOrNull()
+            if (fresh && !cachedEntries.isNullOrEmpty()) return@withContext cachedEntries.also { memory = it }
+            // 1) Classement préparé chaque jour par GitHub Actions (petit fichier, titres français déjà cherchés).
+            // 2) Sinon, directement depuis Netflix + Wikidata.
+            val updated = runCatching { prepared() }.getOrNull()?.takeIf { it.isNotEmpty() }
+                ?: runCatching { download(cached) }.getOrNull()?.takeIf { it.isNotEmpty() }
             val result = updated ?: cachedEntries.orEmpty()
-            memory = result
+            if (result.isNotEmpty()) memory = result
             result
+        }
+    }
+
+    /** top10.json publié à côté de l'APK (voir scripts/top10.py). */
+    private fun prepared(): List<Entry>? {
+        val url = com.extv.player.BuildConfig.UPDATE_URL + "top10.json?t=${System.currentTimeMillis() / 600_000}"
+        client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) return null
+            val o = JSONObject(r.body!!.string())
+            val a = o.getJSONArray("entries")
+            val entries = (0 until a.length()).mapNotNull { runCatching { Entry.fromJson(a.getJSONObject(it)) }.getOrNull() }
+            if (entries.isEmpty()) return null
+            val json = JSONObject().put("checked", System.currentTimeMillis()).put("source", "github")
+                .put("entries", JSONArray(entries.map { it.toJson() }))
+            cacheFile.writeText(json.toString())
+            return entries
         }
     }
 
