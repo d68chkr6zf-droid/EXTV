@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed as lazyItemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -167,7 +168,9 @@ private fun <T> CatalogScreen(
     val pillState = rememberLazyListState()
     val homeState = rememberLazyListState()
     val returnFocus = remember { FocusRequester() }
+    val topFocus = remember { FocusRequester() }
     val returned = remember { booleanArrayOf(false) }
+    val startedOnTop = remember { booleanArrayOf(false) }
     val scope = rememberCoroutineScope()
     val select = rememberCategoryGate { selectedId = it.id }
     var query by rememberSaveable { mutableStateOf("") }
@@ -318,6 +321,13 @@ private fun <T> CatalogScreen(
                                         withFrameNanos { }
                                         runCatching { returnFocus.requestFocus() }
                                     }
+                                    // À l'ouverture, le focus va sur la 1re affiche du Top 10 (comme sur Netflix).
+                                    LaunchedEffect(Unit) {
+                                        if (row.id != TOP10 || startedOnTop[0] || lastOpened != null || contentFocused) return@LaunchedEffect
+                                        startedOnTop[0] = true
+                                        withFrameNanos { }
+                                        runCatching { topFocus.requestFocus() }
+                                    }
                                     Column(Modifier.padding(top = 10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp)) {
                                             Text(row.title, fontSize = if (wide) 18.sp else 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -339,8 +349,12 @@ private fun <T> CatalogScreen(
                                             horizontalArrangement = Arrangement.spacedBy(if (wide) 14.dp else 10.dp),
                                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                         ) {
-                                            items(row.items, key = key) { item ->
-                                                val requester = if (row.id == lastRow && key(item) == lastOpened) returnFocus else null
+                                            lazyItemsIndexed(row.items, key = { _, it -> key(it) }) { index, item ->
+                                                val requester = when {
+                                                    row.id == lastRow && key(item) == lastOpened -> returnFocus
+                                                    row.id == TOP10 && index == 0 && lastOpened == null -> topFocus
+                                                    else -> null
+                                                }
                                                 val rank = if (row.id == TOP10) ranks[key(item)] else null
                                                 if (rank != null) {
                                                     Row(verticalAlignment = Alignment.Bottom) {
