@@ -150,7 +150,8 @@ private fun <T> CatalogScreen(
     // Top 10 Netflix : chargé à part (téléchargement la première fois), la rangée apparaît quand il est prêt.
     val top10 = rememberLoader(Unit) {
         try {
-            loadTop10()
+            // On attend le Top 10 quelques secondes au plus pour qu'il soit tout en haut dès l'ouverture.
+            kotlinx.coroutines.withTimeoutOrNull(8_000) { loadTop10() } ?: emptyList()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -292,11 +293,15 @@ private fun <T> CatalogScreen(
                             }
                         }
                     }
-                    LoadView(home) { rows ->
+                    LoadView(top10) { _ -> LoadView(home) { rows ->
                         val all = remember(rows, top10List) {
                             if (top10List.isEmpty()) rows else listOf(HomeRow(TOP10, "Top 10 en France cette semaine", top10List.map { it.second }, top10List.size)) + rows
                         }
                         val ranks = remember(top10List) { top10List.associate { key(it.second) to it.first } }
+                        // L'écran s'ouvre sur la première rangée (le Top 10 quand il y en a un).
+                        LaunchedEffect(all.firstOrNull()?.id) {
+                            if (lastOpened == null && homeState.firstVisibleItemIndex <= 1) homeState.scrollToItem(0)
+                        }
                         if (all.isEmpty()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Aucun contenu", color = C.TextDim) }
                         } else {
@@ -358,7 +363,7 @@ private fun <T> CatalogScreen(
                                 }
                             }
                         }
-                    }
+                    } }
                 } else {
                     // --- Grille : catégorie entière, Top 10 ou résultats de recherche ---
                     // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
