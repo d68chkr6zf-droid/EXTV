@@ -15,7 +15,9 @@ SOURCES = [
 UA_BROWSER = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 UA_BOT = "EXTV-top10/1.0 (https://github.com/d68chkr6zf-droid/EXTV)"
 FILM_WORDS = re.compile(r"film|movie|documentary|animated|special", re.I)
-TV_WORDS = re.compile(r"series|show|sitcom|anime|television|docuseries|reality|drama|telenovela|programme|miniseries", re.I)
+TV_WORDS = re.compile(r"series|show|sitcom|anime|docuseries|telenovela|miniseries", re.I)
+# Un film : la description donne une année ou un auteur (« 2021 film by … »), sinon c'est un genre ou une notion.
+FILM_OK = re.compile(r"\b(19|20)\d{2}\b|\bby\b|directed", re.I)
 YEAR = re.compile(r"\b(19|20)\d{2}\b")
 # Descriptions à écarter : genres, notions, pages d'homonymie (ex. « Heist » -> « heist film »).
 NOT_A_WORK = re.compile(r"genre|type of|disambiguation|wikimedia|concept|term\b|category|topic|list of|style of", re.I)
@@ -64,6 +66,14 @@ def wikidata(params):
     return {}
 
 
+def is_work(desc, kind):
+    if not desc or NOT_A_WORK.search(desc):
+        return False
+    if kind == "FILMS":
+        return bool(FILM_WORDS.search(desc) and FILM_OK.search(desc))
+    return bool(TV_WORDS.search(desc))
+
+
 def wikipedia_item(title, kind):
     """Recherche plein texte sur Wikipédia anglais (trouve aussi les titres de redirection)."""
     hint = "film" if kind == "FILMS" else "TV series"
@@ -79,7 +89,7 @@ def wikipedia_item(title, kind):
     for p in sorted(pages.values(), key=lambda p: p.get("index", 99)):
         desc = p.get("description", "")
         qid = p.get("pageprops", {}).get("wikibase_item")
-        if qid and words.search(desc) and not NOT_A_WORK.search(desc):
+        if qid and is_work(desc, kind):
             y = YEAR.search(desc)
             return qid, int(y.group(0)) if y else None
     return None
@@ -94,7 +104,7 @@ def translate(entries):
         hit = None
         for lang in ("en", "fr"):
             res = wikidata({"action": "wbsearchentities", "search": e["title"], "language": lang, "type": "item", "limit": 8}).get("search", [])
-            hit = next((r for r in res if words.search(r.get("description", "")) and not NOT_A_WORK.search(r.get("description", ""))), None)
+            hit = next((r for r in res if is_work(r.get("description", ""), e["kind"])), None)
             if hit:
                 break
         if hit:
