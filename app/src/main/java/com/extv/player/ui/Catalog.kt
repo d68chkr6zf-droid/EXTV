@@ -92,3 +92,29 @@ suspend fun IptvRepository.seriesEntries(): List<CategoryEntry> =
 
 suspend fun IptvRepository.seriesIn(categoryId: String): List<Series> =
     itemsOf(ContentType.SERIES, series(null), categoryId, { it.categoryId }, { it.id }, { it.added })
+
+/** Films du Top 10 Netflix France présents dans le catalogue (rang, film), sans les catégories verrouillées. */
+suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
+    val entries = com.extv.player.data.NetflixTop10.entries()
+    if (entries.isEmpty()) return emptyList()
+    val all = moviesIn(Category.ALL)
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        com.extv.player.data.NetflixTop10.match(
+            com.extv.player.data.NetflixTop10.Kind.FILMS, entries, all, { it.name },
+            { m -> m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name) },
+        )
+    }
+}
+
+/** Séries du Top 10 Netflix France présentes dans le catalogue (rang, série). */
+suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> {
+    val entries = com.extv.player.data.NetflixTop10.entries()
+    if (entries.isEmpty()) return emptyList()
+    val all = seriesIn(Category.ALL)
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        com.extv.player.data.NetflixTop10.match(
+            com.extv.player.data.NetflixTop10.Kind.TV, entries, all, { it.name },
+            { s -> com.extv.player.data.NetflixTop10.yearIn(s.name) },
+        )
+    }
+}

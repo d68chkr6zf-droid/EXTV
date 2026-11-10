@@ -14,6 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -71,9 +78,12 @@ fun MoviesScreen(onOpen: (Movie) -> Unit) {
     val repo = App.instance.repository() ?: return
     CatalogScreen(
         title = "Films",
+        unit = "films",
         loadEntries = { repo.movieEntries() },
         loadItems = { repo.moviesIn(it) },
+        loadTop10 = { repo.top10Movies() },
         key = { it.id },
+        categoryOf = { it.categoryId },
         name = { it.name },
         image = { it.poster },
         rating = { it.rating },
@@ -87,9 +97,12 @@ fun SeriesScreen(onOpen: (Series) -> Unit) {
     val repo = App.instance.repository() ?: return
     CatalogScreen(
         title = "Séries",
+        unit = "séries",
         loadEntries = { repo.seriesEntries() },
         loadItems = { repo.seriesIn(it) },
+        loadTop10 = { repo.top10Series() },
         key = { it.id },
+        categoryOf = { it.categoryId },
         name = { it.name },
         image = { it.cover },
         rating = { it.rating },
@@ -98,12 +111,29 @@ fun SeriesScreen(onOpen: (Series) -> Unit) {
     )
 }
 
+/** Pilules propres à l'écran Films / Séries : l'accueil en rangées et le Top 10 Netflix. */
+private const val HOME = "__home"
+private const val TOP10 = "__top10"
+
+/** Nombre d'affiches par rangée de l'accueil (au-delà, une tuile « Tout voir » ouvre la catégorie). */
+private const val ROW_LIMIT = 40
+
+private class HomeRow<T>(val id: String, val title: String, val items: List<T>, val total: Int)
+
+/**
+ * Films / Séries façon plateforme de streaming : barre de catégories en pilules défilantes, puis
+ * - « Accueil » : rangées horizontales (Top 10 Netflix, Reprendre, Favoris, Récemment ajouté, puis une par catégorie) ;
+ * - autre pilule (ou recherche) : toute la catégorie en grille.
+ */
 @Composable
 private fun <T> CatalogScreen(
     title: String,
+    unit: String,
     loadEntries: suspend () -> List<CategoryEntry>,
     loadItems: suspend (String) -> List<T>,
+    loadTop10: suspend () -> List<Pair<Int, T>>,
     key: (T) -> String,
+    categoryOf: (T) -> String,
     name: (T) -> String,
     image: (T) -> String?,
     rating: (T) -> String?,
@@ -111,22 +141,40 @@ private fun <T> CatalogScreen(
     onOpen: (T) -> Unit,
 ) {
     val store = App.instance.store
+    val parental = App.instance.parental
     val toast = rememberToast()
     val size = windowSize()
     val wide = size != WindowSize.Compact
+    val type = if (title == "Séries") ContentType.SERIES else ContentType.MOVIE
     val entries = rememberLoader(Unit) { loadEntries() }
-    // Gardés en revenant d'une fiche (bande-annonce, lecture) : catégorie, recherche et dernière affiche ouverte.
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Top 10 Netflix : chargé à part (téléchargement la première fois), la rangée apparaît quand il est prêt.
+    val top10 = rememberLoader(Unit) {
+        try {
+            loadTop10()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+    val top10List = top10.value.orEmpty()
+    // Gardés en revenant d'une fiche : pilule, recherche, dernière affiche ouverte et sa rangée.
+    var selectedId by rememberSaveable { mutableStateOf(HOME) }
     var lastOpened by rememberSaveable { mutableStateOf<String?>(null) }
-    val firstCategory = remember { FocusRequester() }
+    var lastRow by rememberSaveable { mutableStateOf<String?>(null) }
+    val pillFocus = remember { FocusRequester() }
+    val pillState = rememberLazyListState()
+    val homeState = rememberLazyListState()
     val returnFocus = remember { FocusRequester() }
     val returned = remember { booleanArrayOf(false) }
+    val scope = rememberCoroutineScope()
     val select = rememberCategoryGate { selectedId = it.id }
     var query by rememberSaveable { mutableStateOf("") }
+    var contentFocused by remember { mutableStateOf(false) }
     // Appui long : menu de l'affiche ; « Déplacer » range les favoris (dans la catégorie Favoris).
     var menuFor by remember { mutableStateOf<String?>(null) }
     var pendingMove by remember { mutableStateOf<String?>(null) }
-    val mover = remember { FavoriteMover(if (title == "Séries") ContentType.SERIES else ContentType.MOVIE, key) }
+    val mover = remember { FavoriteMover(type, key) }
     val moveFocus = remember { FocusRequester() }
     BackHandler(enabled = mover.active) { mover.cancel() }
     // Index de recherche (noms normalisés) préparé une seule fois, en arrière-plan, dès l'ouverture de l'écran.
@@ -136,186 +184,371 @@ private fun <T> CatalogScreen(
         }
     }
     LaunchedEffect(Unit) { runCatching { searchIndex.start() } }
-    val searchHint = "Rechercher ${if (title == "Séries") "une série" else "un film"}"
+    val searchHint = "Rechercher ${if (type == ContentType.SERIES) "une série" else "un film"}"
+    val posterWidth = when (size) {
+        WindowSize.Compact -> 92.dp
+        WindowSize.Medium -> 104.dp
+        WindowSize.Expanded -> 118.dp
+    }
 
     Column(Modifier.fillMaxSize().padding(screenPadding())) {
-        LoadView(entries) { list ->
-            LaunchedEffect(Unit) {
-                runCatching { firstCategory.requestFocus() }
-            }
-            val category = list.firstOrNull { it.category.id == selectedId }?.category
-                ?: (list.firstOrNull { it.category.id == Category.RECENT }?.category ?: list.firstOrNull()?.category)
-            val q = query.normalized().trim()
-            val inFavorites = category?.id == Category.FAVORITES && q.isEmpty()
-            LaunchedEffect(category?.id, q) { mover.reset() }
-            // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
-            val items = rememberLoader(category?.id, q) {
-                if (q.isEmpty()) {
-                    category?.let { loadItems(it.id) }.orEmpty()
-                } else {
-                    kotlinx.coroutines.delay(150)
-                    val index = searchIndex.await()
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                        index.filter { it.second.contains(q) }.map { it.first }
-                    }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ExtvLogo(if (wide) 24.sp else 22.sp)
+            Text("  |  $title", fontSize = if (wide) 18.sp else 16.sp, color = C.TextDim, modifier = Modifier.weight(1f))
+            if (wide) SearchField(query, searchHint, Modifier.width(320.dp)) { query = it }
+        }
+        if (!wide) SearchField(query, searchHint, Modifier.padding(top = 8.dp)) { query = it }
+        LoadView(entries) { list -> Column(Modifier.fillMaxSize()) {
+            val pills = remember(list, top10List.isNotEmpty()) {
+                buildList {
+                    add(CategoryEntry(Category(HOME, "Accueil", type), null))
+                    if (top10List.isNotEmpty()) add(CategoryEntry(Category(TOP10, "Top 10", type), top10List.size))
+                    addAll(list)
                 }
             }
+            val category = pills.firstOrNull { it.category.id == selectedId }?.category ?: pills.first().category
+            val selectedIndex = pills.indexOfFirst { it.category.id == category.id }.coerceAtLeast(0)
+            /** Remet le focus sur la pilule sélectionnée (en la faisant défiler à l'écran si besoin). */
+            fun focusPills() {
+                scope.launch {
+                    val visible = pillState.layoutInfo.visibleItemsInfo
+                    if (visible.none { it.index == selectedIndex }) pillState.scrollToItem(selectedIndex)
+                    withFrameNanos { }
+                    runCatching { pillFocus.requestFocus() }
+                }
+            }
+            LaunchedEffect(Unit) {
+                if (selectedIndex > 0) pillState.scrollToItem(selectedIndex)
+                withFrameNanos { }
+                runCatching { pillFocus.requestFocus() }
+            }
+            // Retour depuis les affiches : on remonte aux pilules (Retour depuis les pilules quitte l'écran).
+            BackHandler(enabled = contentFocused && !mover.active && menuFor == null) { focusPills() }
 
-            val grid: @Composable (Modifier) -> Unit = { m ->
-                Column(m) {
-                    if (wide) {
-                        Text(
-                            if (q.isNotEmpty()) "RÉSULTATS POUR « ${query.trim().uppercase()} »" else (category?.name ?: title).uppercase(),
-                            Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                    }
-                    LoadView(items) { loaded ->
-                        val all = mover.display(loaded)
-                        val gridState = rememberLazyGridState()
-                        // « Déplacer » choisi hors de la catégorie Favoris : on y passe, puis le déplacement commence.
-                        LaunchedEffect(loaded, pendingMove) {
-                            val id = pendingMove
-                            if (id != null && inFavorites) {
-                                pendingMove = null
-                                mover.start(loaded, id)
-                            }
-                        }
-                        // Retour d'une fiche : on retrouve l'affiche ouverte, avec le focus dessus (une seule fois).
-                        LaunchedEffect(loaded) {
-                            if (returned[0]) return@LaunchedEffect
-                            returned[0] = true
-                            val i = lastOpened?.let { id -> all.indexOfFirst { key(it) == id } } ?: -1
-                            if (i < 0) return@LaunchedEffect
-                            gridState.scrollToItem(i)
-                            withFrameNanos { }
-                            runCatching { returnFocus.requestFocus() }
-                        }
-                        // L'affiche déplacée reste visible et garde le focus.
-                        LaunchedEffect(mover.movingId, mover.order) {
-                            val i = mover.index()
-                            if (i < 0) return@LaunchedEffect
-                            val visible = gridState.layoutInfo.visibleItemsInfo
-                            if (visible.none { it.index == i } || i < visible.first().index + 1 || i > visible.last().index - 1) {
-                                gridState.scrollToItem(i)
-                            }
-                            withFrameNanos { }
-                            runCatching { moveFocus.requestFocus() }
-                        }
-                        if (all.isEmpty()) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucun résultat dans TOUT" else "Aucun contenu", color = C.TextDim) }
-                        } else {
-                            LazyVerticalGrid(
-                                state = gridState,
-                                // TV : lignes de 4 affiches ; smartphone et tablette : selon la largeur.
-                                columns = when (size) {
-                                    WindowSize.Compact -> GridCells.Adaptive(104.dp)
-                                    WindowSize.Medium -> GridCells.Adaptive(130.dp)
-                                    WindowSize.Expanded -> GridCells.Fixed(4)
+            PillBar(pills, category.id, pillState, pillFocus, size == WindowSize.Compact) { query = ""; select(it) }
+
+            val q = query.normalized().trim()
+            val inFavorites = category.id == Category.FAVORITES && q.isEmpty()
+            LaunchedEffect(category.id, q) { mover.reset() }
+
+            /** Une affiche, avec le menu de l'appui long (favoris / déplacer). */
+            val card: @Composable (T, String?, Modifier, FocusRequester?, Boolean, List<T>) -> Unit = { item, rowId, modifier, requester, moving, siblings ->
+                val favKey = favorite(item).key
+                var isFav by remember(favKey) { mutableStateOf(store.isFavorite(favKey)) }
+                PosterCard(
+                    name(item),
+                    image(item),
+                    onClick = {
+                        lastOpened = key(item)
+                        lastRow = rowId
+                        onOpen(item)
+                    },
+                    modifier = modifier,
+                    focusRequester = requester,
+                    rating = rating(item),
+                    onLongClick = { if (!mover.active) menuFor = "${rowId.orEmpty()}/${key(item)}" },
+                    favorite = isFav,
+                    moveArrows = if (moving) "◀ ▲ ▼ ▶" else null,
+                    menu = {
+                        if (menuFor == "${rowId.orEmpty()}/${key(item)}") {
+                            FavoriteMenu(
+                                isFavorite = isFav,
+                                onToggle = {
+                                    isFav = store.toggleFavorite(favorite(item))
+                                    toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
                                 },
-                                contentPadding = PaddingValues(6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
-                            ) {
-                                items(all, key = key) { item ->
-                                    val favKey = favorite(item).key
-                                    var isFav by remember(favKey) { mutableStateOf(store.isFavorite(favKey)) }
-                                    val moving = mover.isMoving(item)
-                                    PosterCard(
-                                        name(item),
-                                        image(item),
-                                        onClick = {
-                                            lastOpened = key(item)
-                                            onOpen(item)
-                                        },
-                                        modifier = Modifier.animateItem().moveKeys(
-                                            active = moving,
-                                            onMove = { d ->
-                                                val columns = (gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1
-                                                mover.shift(
-                                                    when (d) {
-                                                        MoveDir.LEFT -> -1
-                                                        MoveDir.RIGHT -> 1
-                                                        MoveDir.UP -> -columns
-                                                        MoveDir.DOWN -> columns
-                                                    },
-                                                )
-                                            },
-                                            onDone = {
-                                                mover.commit()
-                                                toast("Favoris rangés")
-                                            },
-                                        ),
-                                        focusRequester = if (moving) moveFocus else if (key(item) == lastOpened) returnFocus else null,
-                                        rating = rating(item),
-                                        onLongClick = { if (!mover.active) menuFor = key(item) },
-                                        favorite = isFav,
-                                        moveArrows = if (moving) "◀ ▲ ▼ ▶" else null,
-                                        menu = {
-                                            if (menuFor == key(item)) {
-                                                FavoriteMenu(
-                                                    isFavorite = isFav,
-                                                    onToggle = {
-                                                        isFav = store.toggleFavorite(favorite(item))
-                                                        toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
-                                                    },
-                                                    onMove = {
-                                                        if (inFavorites) {
-                                                            mover.start(all, key(item))
-                                                        } else {
-                                                            pendingMove = key(item)
-                                                            query = ""
-                                                            list.firstOrNull { it.category.id == Category.FAVORITES }?.let { selectedId = it.category.id }
-                                                        }
-                                                    },
-                                                    onDismiss = { menuFor = null },
-                                                )
-                                            }
-                                        },
-                                    )
+                                onMove = {
+                                    if (inFavorites) {
+                                        mover.start(siblings, key(item))
+                                    } else {
+                                        pendingMove = key(item)
+                                        query = ""
+                                        selectedId = Category.FAVORITES
+                                    }
+                                },
+                                onDismiss = { menuFor = null },
+                            )
+                        }
+                    },
+                )
+            }
+
+            Box(Modifier.weight(1f).fillMaxWidth().onFocusChanged { contentFocused = it.hasFocus }) {
+                if (q.isEmpty() && category.id == HOME) {
+                    // --- Accueil : rangées horizontales ---
+                    val home = rememberLoader(list) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            val groups = loadItems(Category.ALL).groupBy(categoryOf)
+                            buildList {
+                                fun virtual(id: String, label: String, items: List<T>) {
+                                    if (items.isNotEmpty()) add(HomeRow(id, label, items.take(ROW_LIMIT), items.size))
+                                }
+                                virtual(Category.CONTINUE, "Reprendre la lecture", loadItems(Category.CONTINUE))
+                                virtual(Category.FAVORITES, "Favoris", loadItems(Category.FAVORITES))
+                                virtual(Category.RECENT, "Récemment ajouté", loadItems(Category.RECENT))
+                                list.filter { !Category.isVirtual(it.category.id) && !parental.isLocked(it.category) }.forEach { e ->
+                                    groups[e.category.id]?.let { add(HomeRow(e.category.id, e.category.name, it.take(ROW_LIMIT), it.size)) }
                                 }
                             }
                         }
-                        if (mover.active) MoveHint("◀ ▲ ▼ ▶")
+                    }
+                    LoadView(home) { rows ->
+                        val all = remember(rows, top10List) {
+                            if (top10List.isEmpty()) rows else listOf(HomeRow(TOP10, "Top 10 en France cette semaine", top10List.map { it.second }, top10List.size)) + rows
+                        }
+                        val ranks = remember(top10List) { top10List.associate { key(it.second) to it.first } }
+                        if (all.isEmpty()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Aucun contenu", color = C.TextDim) }
+                        } else {
+                            LazyColumn(state = homeState, contentPadding = PaddingValues(bottom = 24.dp)) {
+                                items(all, key = { it.id }) { row ->
+                                    val rowState = rememberLazyListState()
+                                    // Retour d'une fiche : focus sur l'affiche ouverte, dans sa rangée (une seule fois).
+                                    LaunchedEffect(Unit) {
+                                        if (returned[0] || row.id != lastRow) return@LaunchedEffect
+                                        returned[0] = true
+                                        val i = row.items.indexOfFirst { key(it) == lastOpened }
+                                        if (i < 0) return@LaunchedEffect
+                                        if (rowState.layoutInfo.visibleItemsInfo.none { it.index == i }) rowState.scrollToItem(i)
+                                        withFrameNanos { }
+                                        runCatching { returnFocus.requestFocus() }
+                                    }
+                                    Column(Modifier.padding(top = 10.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp)) {
+                                            Text(row.title, fontSize = if (wide) 18.sp else 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                            if (row.id == TOP10) {
+                                                Text(
+                                                    "NETFLIX",
+                                                    Modifier.padding(start = 10.dp).background(C.Velvet, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 1.sp,
+                                                )
+                                                if (wide) Text("  · titres trouvés dans votre abonnement", fontSize = 12.sp, color = C.TextDim, maxLines = 1)
+                                            } else {
+                                                Text("  · ${row.total} $unit", fontSize = 12.sp, color = C.TextDim, maxLines = 1)
+                                            }
+                                        }
+                                        LazyRow(
+                                            state = rowState,
+                                            horizontalArrangement = Arrangement.spacedBy(if (wide) 14.dp else 10.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+                                        ) {
+                                            items(row.items, key = key) { item ->
+                                                val requester = if (row.id == lastRow && key(item) == lastOpened) returnFocus else null
+                                                val rank = if (row.id == TOP10) ranks[key(item)] else null
+                                                if (rank != null) {
+                                                    Row(verticalAlignment = Alignment.Bottom) {
+                                                        RankNumber(rank, posterWidth)
+                                                        card(item, row.id, Modifier.width(posterWidth).offset(x = (-posterWidth * 0.08f)), requester, false, row.items)
+                                                    }
+                                                } else {
+                                                    card(item, row.id, Modifier.width(posterWidth), requester, false, row.items)
+                                                }
+                                            }
+                                            if (row.total > row.items.size) {
+                                                item(key = "__more") {
+                                                    SeeAllTile(row.total, unit, posterWidth) {
+                                                        pills.firstOrNull { it.category.id == row.id }?.let { query = ""; select(it.category) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // --- Grille : catégorie entière, Top 10 ou résultats de recherche ---
+                    // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
+                    val items = rememberLoader(category.id, q, top10List) {
+                        if (q.isEmpty()) {
+                            if (category.id == TOP10) top10List.map { it.second } else loadItems(category.id)
+                        } else {
+                            kotlinx.coroutines.delay(150)
+                            val index = searchIndex.await()
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                index.filter { it.second.contains(q) }.map { it.first }
+                            }
+                        }
+                    }
+                    Column(Modifier.fillMaxSize()) {
+                        LoadView(items) { loaded ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 4.dp)) {
+                                Text(
+                                    if (q.isNotEmpty()) "Résultats pour « ${query.trim()} »" else if (category.id == TOP10) "Top 10 en France cette semaine" else category.name,
+                                    fontSize = if (wide) 18.sp else 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Text("  · ${loaded.size} $unit", fontSize = 12.sp, color = C.TextDim, maxLines = 1)
+                            }
+                            val all = mover.display(loaded)
+                            val gridState = rememberLazyGridState()
+                            // « Déplacer » choisi hors de la catégorie Favoris : on y passe, puis le déplacement commence.
+                            LaunchedEffect(loaded, pendingMove) {
+                                val id = pendingMove
+                                if (id != null && inFavorites) {
+                                    pendingMove = null
+                                    mover.start(loaded, id)
+                                }
+                            }
+                            // Retour d'une fiche : on retrouve l'affiche ouverte, avec le focus dessus (une seule fois).
+                            LaunchedEffect(loaded) {
+                                if (returned[0] || lastRow != null) return@LaunchedEffect
+                                returned[0] = true
+                                val i = lastOpened?.let { id -> all.indexOfFirst { key(it) == id } } ?: -1
+                                if (i < 0) return@LaunchedEffect
+                                gridState.scrollToItem(i)
+                                withFrameNanos { }
+                                runCatching { returnFocus.requestFocus() }
+                            }
+                            // L'affiche déplacée reste visible et garde le focus.
+                            LaunchedEffect(mover.movingId, mover.order) {
+                                val i = mover.index()
+                                if (i < 0) return@LaunchedEffect
+                                val visible = gridState.layoutInfo.visibleItemsInfo
+                                if (visible.none { it.index == i } || i < visible.first().index + 1 || i > visible.last().index - 1) {
+                                    gridState.scrollToItem(i)
+                                }
+                                withFrameNanos { }
+                                runCatching { moveFocus.requestFocus() }
+                            }
+                            if (all.isEmpty()) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(if (q.isNotEmpty()) "Aucun résultat dans TOUT" else "Aucun contenu", color = C.TextDim) }
+                            } else {
+                                LazyVerticalGrid(
+                                    state = gridState,
+                                    // Même largeur d'affiche que dans les rangées de l'accueil.
+                                    columns = GridCells.Adaptive(posterWidth),
+                                    contentPadding = PaddingValues(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 10.dp),
+                                ) {
+                                    items(all, key = key) { item ->
+                                        val moving = mover.isMoving(item)
+                                        card(
+                                            item,
+                                            null,
+                                            Modifier.animateItem().moveKeys(
+                                                active = moving,
+                                                onMove = { d ->
+                                                    val columns = (gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1
+                                                    mover.shift(
+                                                        when (d) {
+                                                            MoveDir.LEFT -> -1
+                                                            MoveDir.RIGHT -> 1
+                                                            MoveDir.UP -> -columns
+                                                            MoveDir.DOWN -> columns
+                                                        },
+                                                    )
+                                                },
+                                                onDone = {
+                                                    mover.commit()
+                                                    toast("Favoris rangés")
+                                                },
+                                            ),
+                                            if (moving) moveFocus else if (lastRow == null && key(item) == lastOpened) returnFocus else null,
+                                            moving,
+                                            all,
+                                        )
+                                    }
+                                }
+                            }
+                            if (mover.active) MoveHint("◀ ▲ ▼ ▶")
+                        }
                     }
                 }
             }
+        } }
+    }
+}
 
-            if (wide) {
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Column(Modifier.width(if (size == WindowSize.Expanded) 290.dp else 230.dp).fillMaxHeight()) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
-                            ExtvLogo(24.sp)
-                            Text("  |  $title", fontSize = 18.sp, color = C.TextDim)
-                        }
-                        CategorySidebar(
-                            list,
-                            category?.id,
-                            { query = ""; select(it) },
-                            Modifier.fillMaxSize(),
-                            firstCategory,
-                            query = query,
-                            onQuery = { query = it },
-                            searchHint = searchHint,
-                        )
-                    }
-                    grid(Modifier.weight(1f).fillMaxHeight())
+/** Barre de catégories en pilules arrondies, défilant à l'horizontale. */
+@Composable
+private fun PillBar(
+    pills: List<CategoryEntry>,
+    selectedId: String,
+    state: androidx.compose.foundation.lazy.LazyListState,
+    focus: FocusRequester,
+    compact: Boolean,
+    onSelect: (Category) -> Unit,
+) {
+    val parental = App.instance.parental
+    LazyRow(
+        state = state,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = if (compact) 8.dp else 12.dp),
+    ) {
+        items(pills, key = { it.category.id }) { e ->
+            val selected = e.category.id == selectedId
+            FocusTile(
+                onClick = { onSelect(e.category) },
+                selected = selected,
+                focusRequester = if (selected) focus else null,
+                shape = RoundedCornerShape(50),
+                normalColor = C.Surface2,
+                focusedColor = C.Accent,
+                selectedColor = C.Selected,
+                focusScale = 1.08f,
+            ) { focused ->
+                Row(
+                    Modifier.padding(horizontal = if (compact) 14.dp else 20.dp, vertical = if (compact) 7.dp else 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        e.category.name,
+                        Modifier.widthIn(max = 260.dp).focusMarquee(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = if (compact) 13.sp else 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            focused -> Color.Black
+                            selected -> C.Accent
+                            else -> C.Text
+                        },
+                    )
+                    if (parental.isLocked(e.category)) Text(" 🔒", fontSize = 12.sp)
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ExtvLogo(22.sp)
-                    Text("  |  $title", fontSize = 16.sp, color = C.TextDim)
-                }
-                SearchField(query, searchHint, Modifier.padding(top = 8.dp)) { query = it }
-                CategoryChips(list, category?.id, { query = ""; select(it) }, Modifier.padding(vertical = 6.dp))
-                grid(Modifier.fillMaxSize())
             }
         }
     }
 }
+
+/** Grand chiffre doré du Top 10 (contour or sur fond sombre), à gauche de l'affiche. */
+@Composable
+private fun RankNumber(rank: Int, posterWidth: androidx.compose.ui.unit.Dp) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val fontSize = with(density) { (posterWidth * 1.05f).toSp() }
+    val style = androidx.compose.ui.text.TextStyle(
+        fontSize = fontSize,
+        fontWeight = FontWeight.Black,
+        letterSpacing = with(density) { (-posterWidth * 0.08f).toSp() },
+        lineHeight = fontSize,
+    )
+    Box(Modifier.padding(end = 2.dp)) {
+        Text("$rank", style = style.copy(color = C.Bg))
+        Text("$rank", style = style.copy(color = C.Accent, drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 3.dp.toPx() })))
+    }
+}
+
+/** Dernière tuile d'une rangée trop longue : ouvre la catégorie entière. */
+@Composable
+private fun SeeAllTile(total: Int, unit: String, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    FocusTile(onClick = onClick, modifier = Modifier.width(width), normalColor = C.Surface2, focusScale = 1.07f) { focused ->
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Tout voir", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (focused) C.Accent else C.Text)
+                Text("$total $unit", fontSize = 12.sp, color = C.TextDim)
+            }
+        }
+    }
+}
+
 
 // --- Fond « affiche » des fiches -------------------------------------------------------------------
 
