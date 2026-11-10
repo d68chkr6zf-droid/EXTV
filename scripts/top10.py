@@ -17,6 +17,8 @@ UA_BOT = "EXTV-top10/1.0 (https://github.com/d68chkr6zf-droid/EXTV)"
 FILM_WORDS = re.compile(r"film|movie|documentary|animated|special", re.I)
 TV_WORDS = re.compile(r"series|show|sitcom|anime|television|docuseries|reality|drama|telenovela|programme|miniseries", re.I)
 YEAR = re.compile(r"\b(19|20)\d{2}\b")
+# Descriptions à écarter : genres, notions, pages d'homonymie (ex. « Heist » -> « heist film »).
+NOT_A_WORK = re.compile(r"genre|type of|disambiguation|wikimedia|concept|term\b|category|topic|list of|style of", re.I)
 
 
 def get(url, ua, timeout=120):
@@ -62,15 +64,46 @@ def wikidata(params):
     return {}
 
 
+def wikipedia_item(title, kind):
+    """Recherche plein texte sur Wikipédia anglais (trouve aussi les titres de redirection)."""
+    hint = "film" if kind == "FILMS" else "TV series"
+    url = "https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
+        "action": "query", "generator": "search", "gsrsearch": f"{title} {hint}", "gsrlimit": 3,
+        "prop": "pageprops|description", "ppprop": "wikibase_item", "format": "json"})
+    try:
+        pages = json.loads(get(url, UA_BOT, 30)).get("query", {}).get("pages", {})
+    except Exception as e:  # noqa: BLE001
+        print(f"wikipedia : {e}", file=sys.stderr)
+        return None
+    words = FILM_WORDS if kind == "FILMS" else TV_WORDS
+    for p in sorted(pages.values(), key=lambda p: p.get("index", 99)):
+        desc = p.get("description", "")
+        qid = p.get("pageprops", {}).get("wikibase_item")
+        if qid and words.search(desc) and not NOT_A_WORK.search(desc):
+            y = YEAR.search(desc)
+            return qid, int(y.group(0)) if y else None
+    return None
+
+
 def translate(entries):
     found = {}
     for e in entries:
+        if e["title"] in found:
+            continue
         words = FILM_WORDS if e["kind"] == "FILMS" else TV_WORDS
-        res = wikidata({"action": "wbsearchentities", "search": e["title"], "language": "en", "type": "item", "limit": 8}).get("search", [])
-        hit = next((r for r in res if words.search(r.get("description", ""))), None)
+        hit = None
+        for lang in ("en", "fr"):
+            res = wikidata({"action": "wbsearchentities", "search": e["title"], "language": lang, "type": "item", "limit": 8}).get("search", [])
+            hit = next((r for r in res if words.search(r.get("description", "")) and not NOT_A_WORK.search(r.get("description", ""))), None)
+            if hit:
+                break
         if hit:
             y = YEAR.search(hit.get("description", ""))
             found[e["title"]] = (hit["id"], int(y.group(0)) if y else None)
+        else:
+            item = wikipedia_item(e["title"], e["kind"])
+            if item:
+                found[e["title"]] = item
     ids = sorted({v[0] for v in found.values()})
     names = {}
     for i in range(0, len(ids), 40):
