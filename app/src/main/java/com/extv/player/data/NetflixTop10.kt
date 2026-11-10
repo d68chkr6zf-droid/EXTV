@@ -228,6 +228,18 @@ object NetflixTop10 {
         return words.filterNot { it == "and" || it == "et" }.joinToString(" ")
     }
 
+    private val SEGMENTS = Regex("\\s+[-–|]\\s+|\\s*:\\s+")
+
+    /**
+     * Clés d'un titre : le titre entier, puis chaque partie autour de « : » ou « - »
+     * (ex. « The Rookie : Le Flic de Los Angeles » se retrouve aussi par « Le Flic de Los Angeles »).
+     */
+    fun titleKeys(raw: String): List<String> {
+        val parts = raw.split(SEGMENTS)
+        val keys = listOf(titleKey(raw)) + if (parts.size > 1) parts.map(::titleKey).filter { it.length >= 6 } else emptyList()
+        return keys.filter { it.isNotEmpty() }.distinct()
+    }
+
     /** Année indiquée dans un nom du catalogue, ex. « Alerte rouge (2021) ». */
     fun yearIn(raw: String): Int? = YEAR.findAll(raw).lastOrNull()?.value?.toIntOrNull()
 
@@ -238,12 +250,13 @@ object NetflixTop10 {
     fun <T> match(kind: Kind, entries: List<Entry>, catalog: List<T>, name: (T) -> String, year: (T) -> Int?): List<Pair<Int, T>> {
         val byKey = HashMap<String, MutableList<T>>()
         catalog.forEach { item ->
-            val k = titleKey(name(item))
-            if (k.isNotEmpty()) byKey.getOrPut(k) { ArrayList(1) } += item
+            titleKeys(name(item)).forEach { k -> byKey.getOrPut(k) { ArrayList(1) } += item }
         }
         val used = HashSet<T>()
         return entries.filter { it.kind == kind }.sortedBy { it.rank }.mapNotNull { e ->
-            val keys = (listOf(e.title) + e.altTitles).map(::titleKey).filter { it.isNotEmpty() }.distinct()
+            // Titres entiers d'abord, puis leurs parties.
+            val names = listOf(e.title) + e.altTitles
+            val keys = (names.map(::titleKey) + names.flatMap(::titleKeys)).filter { it.isNotEmpty() }.distinct()
             val candidates = keys.flatMap { byKey[it].orEmpty() }.distinct().filter { it !in used }.filter { item ->
                 val y = year(item)
                 e.year == null || y == null || kotlin.math.abs(y - e.year) <= 1
