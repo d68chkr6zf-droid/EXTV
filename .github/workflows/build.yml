@@ -57,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view latest --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null \
-            | grep -vx -e 'EXTV.apk' -e 'version.json' \
+            | grep -vx -e 'EXTV.apk' -e 'version.json' -e 'top10.json' \
             | xargs -r -I{} gh release delete-asset latest {} --repo "$GITHUB_REPOSITORY" -y || true
       - name: Publier la dernière version (lien de téléchargement direct)
         if: github.ref == 'refs/heads/main'
