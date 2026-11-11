@@ -5,7 +5,6 @@ import android.os.SystemClock
 import android.view.Choreographer
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import com.extv.player.ui.AppNav
 import com.extv.player.ui.ExtvTheme
 import com.extv.player.ui.StartLock
@@ -18,15 +17,55 @@ class MainActivity : ComponentActivity() {
         com.extv.player.data.Updater.cancelRestart(this)
         // Diagnostic de la navigation (Paramètres) : images lentes depuis le lancement.
         com.extv.player.ui.KeyLog.startFrameMonitor()
-        setContent {
-            ExtvTheme {
-                AppNav()
-                // Code au démarrage (si activé par l'abonné) ; la mise à jour obligatoire passe par-dessus.
-                StartLock()
-                // Vérifie les mises à jour sur tous les écrans de l'appli.
-                UpdatePrompt()
+        val compose = androidx.compose.ui.platform.ComposeView(this).apply {
+            setContent {
+                ExtvTheme {
+                    AppNav()
+                    // Code au démarrage (si activé par l'abonné) ; la mise à jour obligatoire passe par-dessus.
+                    StartLock()
+                    // Vérifie les mises à jour sur tous les écrans de l'appli.
+                    UpdatePrompt()
+                }
             }
         }
+        setContentView(QuietAccessibilityLayout(this).apply { addView(compose) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        useSmoothDisplayMode()
+    }
+
+    /**
+     * Menus à 50 ou 60 Hz. Après un film, certains boîtiers (Formuler Z12) restent à 24 Hz, la fréquence du
+     * film choisie par le lecteur : l'interface n'affichait plus que 24 images par seconde et suivait mal
+     * la télécommande. On redemande ici, à résolution égale, le mode le plus fluide (60 Hz au plus).
+     */
+    private fun useSmoothDisplayMode() {
+        runCatching {
+            @Suppress("DEPRECATION")
+            val display = window.decorView.display ?: windowManager.defaultDisplay ?: return
+            val current = display.mode
+            val best = display.supportedModes
+                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                .filter { it.refreshRate in 47f..61f }
+                .maxByOrNull { it.refreshRate } ?: return
+            if (current.refreshRate >= 47f) return // déjà fluide : on garde le réglage du boîtier
+            window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
+        }
+    }
+
+    /**
+     * Conteneur de l'écran qui ne transmet pas les événements d'accessibilité de l'interface, sauf si un
+     * lecteur d'écran (TalkBack) est actif. Sur le Formuler, le service de la télécommande est un service
+     * d'accessibilité : chaque déplacement du focus lui était annoncé et l'appli prenait jusqu'à 1 s de
+     * retard sur les touches (0,4 s au pire sur un boîtier sans ce service).
+     */
+    private class QuietAccessibilityLayout(context: android.content.Context) : android.widget.FrameLayout(context) {
+        private val manager = context.getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+
+        override fun requestSendAccessibilityEvent(child: android.view.View, event: android.view.accessibility.AccessibilityEvent): Boolean =
+            if (manager.isTouchExplorationEnabled) super.requestSendAccessibilityEvent(child, event) else false
     }
 
     // --- Flèches : un seul déplacement du focus par image affichée ---------------------------------
