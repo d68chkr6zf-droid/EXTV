@@ -300,10 +300,8 @@ object NetflixTop10 {
             // Titres entiers d'abord, puis leurs parties.
             val names = listOf(e.title) + e.altTitles
             val keys = (names.map(::titleKey) + names.flatMap(::titleKeys)).filter { it.isNotEmpty() }.distinct()
-            val candidates = keys.flatMap { byKey[it].orEmpty() }.distinct().filter { it !in used }.filter { item ->
-                val y = year(item)
-                e.year == null || y == null || kotlin.math.abs(y - e.year) <= 1
-            }
+            // L'année (souvent celle d'un homonyme plus ancien sur Wikidata) départage seulement, sans exclure.
+            val candidates = keys.flatMap { byKey[it].orEmpty() }.distinct().filter { it !in used }
             val best = candidates.firstOrNull { e.year != null && year(it) == e.year } ?: candidates.firstOrNull()
             best?.let { used += it; e.rank to it }
         }
