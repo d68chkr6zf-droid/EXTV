@@ -192,25 +192,35 @@ private suspend fun <T> IptvRepository.top10Of(
                 all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
         }
         // Dates de sortie : la plus récente d'abord ; les films sortis avant l'an dernier sont écartés.
-        val dates = releaseDates?.invoke(pool).orEmpty()
+        // Catégories « Tendance sur Netflix / Prime Video / HBO / Disney+ / Apple TV+ » du serveur.
+        val platforms = (listOf(netflixTrending) + others).filter { it.isNotEmpty() }
+        val dates = releaseDates?.invoke((pool + platforms.flatten()).distinct()).orEmpty()
         fun dateOf(it: T): String? = dates[it] ?: year(it)?.toString()
         val recent = pool.filter { dateOf(it)?.take(4)?.toIntOrNull()?.let { y -> y >= thisYear - 1 } ?: true }
         val cinemaKind = com.extv.player.data.NetflixTop10.Kind.CINEMA
-        // Uniquement des films de « VOD Récemment ajouté », jamais un vieux film (« L'aile ou la cuisse » 1976 écarté
+        // Des films récents (« VOD Récemment ajouté » et Tendance), jamais un vieux film (« L'aile ou la cuisse » 1976 écarté
         // même s'il est dans le classement Netflix), à tour de rôle :
-        // 1) box-office France de la semaine ; 2) films les plus regardés sur Netflix en ce moment.
+        // 1) box-office France de la semaine ; 2) films les plus regardés sur Netflix en ce moment ;
+        // 3) films récents des « Tendance sur … » (Netflix, Prime Video, HBO, Disney+, Apple TV+).
         val boxOffice = if (entries.none { it.kind == cinemaKind }) emptyList() else
             withContext(Dispatchers.Default) { com.extv.player.data.NetflixTop10.match(cinemaKind, entries, recent, name, year, recent) }
         val netflixNow = entries.filter { it.kind == com.extv.player.data.NetflixTop10.Kind.FILMS && (it.year == null || it.year >= thisYear - 1) }
         val netflixRecent = if (netflixNow.isEmpty()) emptyList() else withContext(Dispatchers.Default) {
             com.extv.player.data.NetflixTop10.match(com.extv.player.data.NetflixTop10.Kind.FILMS, netflixNow, recent, name, year, recent)
         }
-        val mixed = ArrayList<T>()
-        for (i in 0 until maxOf(boxOffice.size, netflixRecent.size)) {
-            boxOffice.getOrNull(i)?.let { if (it !in mixed) mixed += it }
-            netflixRecent.getOrNull(i)?.let { if (it !in mixed) mixed += it }
+        // 3) Films récents (sortis cette année ou l'an dernier, date connue) des catégories Tendance de chaque plateforme.
+        val platformRecent = platforms.map { list ->
+            list.filter { dateOf(it)?.take(4)?.toIntOrNull()?.let { y -> y >= thisYear - 1 } == true }
         }
-        // 3) Complété par les autres films de la catégorie, sortie la plus récente d'abord.
+        val lists = listOf(boxOffice, netflixRecent) + platformRecent
+        val mixed = ArrayList<T>()
+        val seen = HashSet<String>()
+        for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) {
+            lists.forEach { l ->
+                l.getOrNull(i)?.let { if (seen.add(Top.titleKey(name(it)).ifEmpty { name(it) })) mixed += it }
+            }
+        }
+        // 4) Complété par les autres films de « VOD Récemment ajouté », sortie la plus récente d'abord.
         mixed + recent.filter { it !in mixed }.sortedByDescending { dateOf(it) ?: "" }
     }
     // Films : uniquement la liste ci-dessus. Séries : Netflix puis chaque « Tendance sur … ».
