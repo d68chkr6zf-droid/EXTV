@@ -22,6 +22,9 @@ import kotlinx.coroutines.withContext
  */
 private const val RECENT_LIMIT = 100
 
+/** Nombre de places du Top (demandé par l'abonné : Top 20). */
+const val TOP_SIZE = 20
+
 private suspend fun <T> IptvRepository.entriesOf(
     type: ContentType,
     all: List<T>,
@@ -236,9 +239,9 @@ private suspend fun <T> IptvRepository.top10Of(
     val picked = ArrayList<T>()
     val keys = HashSet<String>()
     val cursors = IntArray(sources.size)
-    while (picked.size < 10 && sources.indices.any { cursors[it] < sources[it].size }) {
+    while (picked.size < TOP_SIZE && sources.indices.any { cursors[it] < sources[it].size }) {
         for (i in sources.indices) {
-            if (picked.size >= 10) break
+            if (picked.size >= TOP_SIZE) break
             val list = sources[i]
             while (cursors[i] < list.size) {
                 val item = list[cursors[i]++]
