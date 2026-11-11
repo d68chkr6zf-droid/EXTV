@@ -5,7 +5,7 @@ Source : fichier public hebdomadaire de Netflix (all-weeks-countries.tsv). Netfl
 titres anglais : chaque titre est cherché sur Wikidata pour obtenir ses titres français.
 Aucune dépendance (bibliothèque standard uniquement).
 """
-import csv, io, json, re, sys, time, urllib.parse, urllib.request
+import csv, io, json, re, sys, time, unicodedata, urllib.parse, urllib.request
 
 COUNTRY = "FR"
 SOURCES = [
@@ -125,16 +125,60 @@ def wikipedia_item(title, kind):
     return None
 
 
+def simple(s):
+    s = unicodedata.normalize("NFD", s.lower())
+    return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in s if not unicodedata.combining(c))).strip()
+
+
+def wikipedia_exact(title, kind):
+    """Article Wikipédia anglais au titre exact (« X (2026 TV series) », « X (film) »…), le plus fiable."""
+    year = time.gmtime().tm_year
+    if kind == "FILMS":
+        tries = [f"{title} ({y} film)" for y in (year, year - 1, year - 2)] + [f"{title} (film)", title]
+    else:
+        tries = [f"{title} ({y} TV series)" for y in (year, year - 1, year - 2)] + \
+                [f"{title} (TV series)", f"{title} (miniseries)", f"{title} (docuseries)", title]
+    url = "https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
+        "action": "query", "titles": "|".join(tries), "redirects": 1, "prop": "pageprops|description",
+        "ppprop": "wikibase_item", "format": "json"})
+    try:
+        q = json.loads(get(url, UA_BOT, 30)).get("query", {})
+    except Exception as e:  # noqa: BLE001
+        print(f"wikipedia : {e}", file=sys.stderr)
+        return None
+    redirect = {r["from"]: r["to"] for r in q.get("normalized", []) + q.get("redirects", [])}
+    pages = {p.get("title"): p for p in q.get("pages", {}).values() if "missing" not in p}
+    for name in tries:
+        target = redirect.get(name, name)
+        target = redirect.get(target, target)
+        p = pages.get(target)
+        if not p:
+            continue
+        desc = p.get("description", "")
+        qid = p.get("pageprops", {}).get("wikibase_item")
+        # Titre avec précision « (2026 TV series) » : c'est forcément l'œuvre ; titre nu : on vérifie la description.
+        ok = not NOT_A_WORK.search(desc) if name != title else is_work(desc, kind)
+        if qid and ok:
+            y = YEAR.search(desc) or YEAR.search(target)
+            return qid, int(y.group(0)) if y else None
+    return None
+
+
 def translate(entries):
     found = {}
     for e in entries:
         if e["title"] in found:
             continue
-        words = FILM_WORDS if e["kind"] == "FILMS" else TV_WORDS
+        item = wikipedia_exact(e["title"], e["kind"])
+        if item:
+            found[e["title"]] = item
+            continue
         hit = None
         for lang in ("en", "fr"):
             res = wikidata({"action": "wbsearchentities", "search": e["title"], "language": lang, "type": "item", "limit": 8}).get("search", [])
-            hit = next((r for r in res if is_work(r.get("description", ""), e["kind"])), None)
+            # Le libellé trouvé doit être exactement le titre (évite « A Couple of Lies » -> « The Perfect Couple »).
+            hit = next((r for r in res if is_work(r.get("description", ""), e["kind"])
+                        and simple(r.get("match", {}).get("text", "")) == simple(e["title"])), None)
             if hit:
                 break
         if hit:
