@@ -147,13 +147,18 @@ private fun <T> CatalogScreen(
     val size = windowSize()
     val wide = size != WindowSize.Compact
     val type = if (title == "Séries") ContentType.SERIES else ContentType.MOVIE
-    val entries = rememberLoader(Unit) { loadEntries() }
+    // Les tris / filtrages du catalogue (dizaines de milliers d'éléments) se font hors du thread de l'écran.
+    val entries = rememberLoader(Unit) { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { loadEntries() } }
+    // Favoris lus une seule fois (et non pour chaque affiche affichée en faisant défiler les rangées).
+    var favVersion by remember { mutableIntStateOf(0) }
+    val favKeys = remember(favVersion) { store.favorites().mapTo(HashSet()) { it.key } }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { favVersion++ }
     // Top 10 Netflix : chargé à part (téléchargement la première fois), la rangée apparaît quand il est prêt.
     val top10 = rememberLoader(Unit) {
         try {
             // Attendu avant d'afficher l'accueil pour qu'il soit tout en haut dès l'ouverture
             // (le téléchargement du classement est limité à quelques secondes, voir Catalog.kt).
-            loadTop10()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { loadTop10() }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -238,8 +243,8 @@ private fun <T> CatalogScreen(
 
             /** Une affiche, avec le menu de l'appui long (favoris / déplacer). */
             val card: @Composable (T, String?, Modifier, FocusRequester?, Boolean, List<T>) -> Unit = { item, rowId, modifier, requester, moving, siblings ->
-                val favKey = favorite(item).key
-                var isFav by remember(favKey) { mutableStateOf(store.isFavorite(favKey)) }
+                val favKey = remember(item) { favorite(item).key }
+                val isFav = favKey in favKeys
                 PosterCard(
                     name(item),
                     image(item),
@@ -259,8 +264,9 @@ private fun <T> CatalogScreen(
                             FavoriteMenu(
                                 isFavorite = isFav,
                                 onToggle = {
-                                    isFav = store.toggleFavorite(favorite(item))
-                                    toast(if (isFav) "★ Ajouté aux favoris" else "Retiré des favoris")
+                                    val now = store.toggleFavorite(favorite(item))
+                                    favVersion++
+                                    toast(if (now) "★ Ajouté aux favoris" else "Retiré des favoris")
                                 },
                                 onMove = {
                                     if (inFavorites) {
@@ -378,7 +384,7 @@ private fun <T> CatalogScreen(
                     // Recherche : toujours dans TOUT, quelle que soit la catégorie sélectionnée.
                     val items = rememberLoader(category.id, q, top10List) {
                         if (q.isEmpty()) {
-                            if (category.id == TOP10) top10List.map { it.second } else loadItems(category.id)
+                            if (category.id == TOP10) top10List.map { it.second } else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { loadItems(category.id) }
                         } else {
                             kotlinx.coroutines.delay(150)
                             val index = searchIndex.await()
