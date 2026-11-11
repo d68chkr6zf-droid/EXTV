@@ -453,7 +453,7 @@ private fun <T> CatalogScreen(
                                         card(
                                             item,
                                             null,
-                                            Modifier.animateItem().moveKeys(
+                                            (if (mover.active) Modifier.animateItem() else Modifier).moveKeys(
                                                 active = moving,
                                                 onMove = { d ->
                                                     val columns = (gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1

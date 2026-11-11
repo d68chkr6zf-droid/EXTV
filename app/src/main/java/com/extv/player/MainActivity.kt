@@ -1,6 +1,8 @@
 package com.extv.player
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,9 +29,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Chaque touche est notée pour le diagnostic de la navigation (Paramètres), sans rien changer à son effet. */
+    // --- Flèches : un seul déplacement du focus par image affichée ---------------------------------
+    // Quand l'écran met du temps à se redessiner, les appuis reçus entre-temps étaient tous appliqués d'un
+    // coup sur la liste, et le focus sautait plusieurs lignes à l'image suivante. Une flèche n'est donc
+    // traitée que si le déplacement précédent a déjà été affiché ; une flèche maintenue avance au plus
+    // toutes les REPEAT_MS.
+    private var arrowPending = false
+    private var lastRepeatAt = 0L
+    private val arrowShown = Choreographer.FrameCallback { arrowPending = false }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         com.extv.player.ui.KeyLog.record(event)
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS) {
+            if (arrowPending) return true
+            if (event.repeatCount > 0) {
+                val now = SystemClock.uptimeMillis()
+                if (now - lastRepeatAt < REPEAT_MS) return true
+                lastRepeatAt = now
+            }
+            arrowPending = true
+            Choreographer.getInstance().postFrameCallback(arrowShown)
+        }
         return super.dispatchKeyEvent(event)
+    }
+
+    private companion object {
+        val ARROWS = setOf(
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+        )
+        const val REPEAT_MS = 90L
     }
 }

@@ -124,7 +124,10 @@ private val colors: ColorScheme = darkColorScheme(
 @Composable
 fun ExtvTheme(background: Boolean = true, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colors) {
-        CompositionLocalProvider(LocalContentColor provides C.Text) {
+        CompositionLocalProvider(
+            LocalContentColor provides C.Text,
+            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides InstantBringIntoView,
+        ) {
             if (background) {
                 Box(
                     Modifier.fillMaxSize()
@@ -243,6 +246,28 @@ fun FocusTile(
             .then(if (onLongClick != null) Modifier.okLongPress(onClick, onLongClick) else Modifier)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) { CompositionLocalProvider(LocalTileFocused provides focused) { content(focused) } }
+}
+
+/**
+ * Défilement des listes quand le focus arrive au bord : immédiat au lieu d'une animation à ressort.
+ * Avec l'animation, un appui de flèche reçu pendant qu'elle tourne cherche la chaîne suivante dans une
+ * liste encore en mouvement, et le focus peut sauter une ou plusieurs lignes (sensible sur les boîtiers
+ * dont l'image est plus lente, comme le Formuler Z12). Même calcul de distance qu'Android par défaut.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private val InstantBringIntoView = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> = androidx.compose.animation.core.snap()
+
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val trailing = offset + size
+        return when {
+            offset >= 0 && trailing <= containerSize -> 0f // déjà visible
+            offset < 0 && trailing > containerSize -> 0f // plus grand que la liste
+            kotlin.math.abs(offset) < kotlin.math.abs(trailing - containerSize) -> offset
+            else -> trailing - containerSize
+        }
+    }
 }
 
 /** Vrai à l'intérieur d'une [FocusTile] qui a le focus. */
