@@ -167,7 +167,7 @@ class PlayerActivity : ComponentActivity() {
         override fun run() {
             val limit = maxOf(12_000L, store.networkCaching + 10_000L)
             if (live && !userPaused && SystemClock.elapsedRealtime() - lastProgressAt > limit) {
-                playCurrent()
+                if (!tryBackup()) playCurrent()
                 return
             }
             handler.postDelayed(this, 2_000)
