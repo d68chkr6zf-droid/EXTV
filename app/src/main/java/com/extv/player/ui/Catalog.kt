@@ -137,23 +137,26 @@ suspend fun IptvRepository.seriesIn(categoryId: String): List<Series> =
     itemsOf(ContentType.SERIES, series(null), categoryId, { it.categoryId }, { it.id }, { it.added })
 
 
-/**
- * Catégorie « Tendance sur Netflix » (ou « Top Netflix ») du serveur, si elle existe : titres de l'abonnement,
- * avec leurs noms français.
- */
-private suspend fun <T> IptvRepository.serverTrending(type: ContentType, itemsIn: suspend (String) -> List<T>): List<T> {
+/** Catégories « Tendance sur … » du serveur (Netflix, Prime Video, Disney+, Apple TV+, HBO…), dans l'ordre du serveur. */
+private suspend fun IptvRepository.serverTrendingCategories(type: ContentType): List<com.extv.player.data.Category> {
     val parental = App.instance.parental
-    val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !parental.isLocked(it) }
-    val netflix = cats.filter { it.name.normalized().contains("netflix") }
-    val best = netflix.firstOrNull { c -> c.name.normalized().let { it.contains("tendance") || it.contains("top") || it.contains("trend") } }
-        ?: netflix.firstOrNull()
-        ?: return emptyList()
-    return itemsIn(best.id)
+    return runCatching { categories(type) }.getOrDefault(emptyList()).filter { !parental.isLocked(it) }
+        .filter { c -> c.name.normalized().let { it.contains("tendance") || it.contains("trend") || (it.contains("top") && PLATFORMS.any(it::contains)) } }
+}
+
+private val PLATFORMS = listOf("netflix", "prime", "amazon", "disney", "apple", "hbo", "max", "canal", "paramount")
+
+/** Catégories du serveur avec les nouveautés (« VOD Récemment ajouté », « Nouveautés », « Au cinéma »…). */
+private fun isRecentCategory(name: String): Boolean = name.normalized().let {
+    it.contains("recemment") || it.contains("recent") || it.contains("nouveaut") || it.contains("cinema") || it.contains("ajout")
 }
 
 /**
- * Top 10 : titres du vrai classement Netflix (France, puis mondial) présents dans l'abonnement, dans l'ordre
- * du classement ; complété par la catégorie « Tendance sur Netflix » du serveur ; numérotés de 1 à 10.
+ * Top 10 mélangé, à tour de rôle :
+ *  - Netflix : vrai classement (France puis mondial) retrouvé dans l'abonnement, complété par « Tendance sur Netflix » ;
+ *  - Cinéma (films seulement) : box-office France de la semaine, retrouvé parmi les films récemment ajoutés ;
+ *  - puis chaque autre « Tendance sur … » du serveur (Prime Video, Disney+, Apple TV+, HBO…).
+ * Chaque titre une seule fois, numérotés de 1 à 10.
  */
 private suspend fun <T> IptvRepository.top10Of(
     type: ContentType,
@@ -162,18 +165,45 @@ private suspend fun <T> IptvRepository.top10Of(
     name: (T) -> String,
     year: (T) -> Int?,
 ): List<Pair<Int, T>> {
-    val trending = serverTrending(type, itemsIn)
+    val Top = com.extv.player.data.NetflixTop10
+    val trendCats = serverTrendingCategories(type)
+    val (netflixCats, otherCats) = trendCats.partition { it.name.normalized().contains("netflix") }
+    val netflixTrending = netflixCats.firstOrNull()?.let { itemsIn(it.id) }.orEmpty()
+    val others = otherCats.map { itemsIn(it.id) }.filter { it.isNotEmpty() }
     // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
-    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() }.orEmpty()
-    val matched = if (entries.isEmpty()) {
-        emptyList()
-    } else {
-        val all = itemsIn(Category.ALL)
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            com.extv.player.data.NetflixTop10.match(kind, entries, all, name, year, trending)
+    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { Top.entries() }.orEmpty()
+    val all = if (entries.isEmpty()) emptyList() else itemsIn(Category.ALL)
+    val netflix = withContext(Dispatchers.Default) {
+        if (entries.isEmpty()) emptyList() else Top.match(kind, entries, all, name, year, netflixTrending)
+    } + netflixTrending
+    val cinema = if (kind != Top.Kind.FILMS || entries.none { it.kind == Top.Kind.CINEMA }) emptyList() else {
+        // Films au cinéma : cherchés dans « Récemment ajouté » et les catégories de nouveautés du serveur,
+        // puis dans tout le catalogue seulement s'ils sont de cette année ou de l'an dernier (évite les homonymes anciens).
+        val recentCats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { isRecentCategory(it.name) && !App.instance.parental.isLocked(it) }
+        val recent = (itemsIn(Category.RECENT) + recentCats.flatMap { itemsIn(it.id) }).distinct()
+        val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val pool = (recent + all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
+        withContext(Dispatchers.Default) { Top.match(Top.Kind.CINEMA, entries, pool, name, year) }
+    }
+    val sources = listOf(netflix, cinema) + others
+    val picked = ArrayList<T>()
+    val keys = HashSet<String>()
+    val cursors = IntArray(sources.size)
+    while (picked.size < 10 && sources.indices.any { cursors[it] < sources[it].size }) {
+        for (i in sources.indices) {
+            if (picked.size >= 10) break
+            val list = sources[i]
+            while (cursors[i] < list.size) {
+                val item = list[cursors[i]++]
+                val key = Top.titleKey(name(item)).ifEmpty { name(item) }
+                if (item !in picked && keys.add(key)) {
+                    picked += item
+                    break
+                }
+            }
         }
     }
-    return (matched + trending).distinct().take(10).mapIndexed { i, item -> (i + 1) to item }
+    return picked.mapIndexed { i, item -> (i + 1) to item }
 }
 
 suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> =

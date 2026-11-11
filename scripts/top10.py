@@ -5,7 +5,7 @@ Source : fichier public hebdomadaire de Netflix (all-weeks-countries.tsv). Netfl
 titres anglais : chaque titre est cherché sur Wikidata pour obtenir ses titres français.
 Aucune dépendance (bibliothèque standard uniquement).
 """
-import csv, io, json, re, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import csv, html, io, json, re, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 COUNTRY = "FR"
 SOURCES = [
@@ -225,10 +225,39 @@ def translate(entries):
     return entries
 
 
+BOX_OFFICE = "https://www.allocine.fr/boxoffice/france/"
+FILM_LINK = re.compile(r'<a[^>]+href="(?:https://www\.allocine\.fr)?/film/fichefilm_gen_cfilm=(\d+)\.html"[^>]*>(.*?)</a>', re.S)
+TAG = re.compile(r"<[^>]+>")
+CINEMA_MAX = 20
+
+
+def cinema():
+    """Box-office France de la semaine (entrées en salle), titres français d'AlloCiné, dans l'ordre du classement."""
+    try:
+        page = get(BOX_OFFICE, UA_BROWSER, 60).decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        print(f"box-office indisponible : {e}", file=sys.stderr)
+        return []
+    # Le tableau du classement commence au premier film classé (avant : menus et actualités).
+    start = page.find("responsive-table")
+    body = page[start:] if start >= 0 else page
+    out, seen = [], set()
+    for fid, raw in FILM_LINK.findall(body):
+        title = html.unescape(TAG.sub("", raw)).strip()
+        if not title or fid in seen:
+            continue
+        seen.add(fid)
+        out.append({"kind": "CINEMA", "rank": len(out) + 1, "title": title, "alt": [], "year": time.gmtime().tm_year})
+        if len(out) >= CINEMA_MAX:
+            break
+    return out
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "top10.json"
     week, entries = netflix_rows()
     entries = translate(entries)
+    entries += cinema()
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"week": week, "country": COUNTRY, "generated": int(time.time()), "entries": entries}, f, ensure_ascii=False, indent=1)
     print(f"Semaine du {week} :")

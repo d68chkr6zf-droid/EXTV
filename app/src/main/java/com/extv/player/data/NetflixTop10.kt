@@ -23,7 +23,8 @@ import java.util.concurrent.TimeUnit
  * Le résultat est gardé dans un fichier et rechargé au plus une fois par jour (304 si rien n'a changé).
  */
 object NetflixTop10 {
-    enum class Kind { FILMS, TV }
+    /** CINEMA : box-office France de la semaine (titres français d'AlloCiné, préparé par scripts/top10.py). */
+    enum class Kind { FILMS, TV, CINEMA }
 
     /** Une place du classement : rang, titre Netflix (anglais), titres français et année trouvés. */
     class Entry(val kind: Kind, val rank: Int, val title: String, val altTitles: List<String>, val year: Int?) {
