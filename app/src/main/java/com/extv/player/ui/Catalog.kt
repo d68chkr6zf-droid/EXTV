@@ -176,14 +176,14 @@ private suspend fun <T> IptvRepository.top10Of(
     val netflix = withContext(Dispatchers.Default) {
         if (entries.isEmpty()) emptyList() else Top.match(kind, entries, all, name, year, netflixTrending)
     } + netflixTrending
-    val cinema = if (kind != Top.Kind.FILMS || entries.none { it.kind == Top.Kind.CINEMA }) emptyList() else {
+    val cinema = if (kind != com.extv.player.data.NetflixTop10.Kind.FILMS || entries.none { it.kind == com.extv.player.data.NetflixTop10.Kind.CINEMA }) emptyList() else {
         // Films au cinéma : cherchés dans « Récemment ajouté » et les catégories de nouveautés du serveur,
         // puis dans tout le catalogue seulement s'ils sont de cette année ou de l'an dernier (évite les homonymes anciens).
         val recentCats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { isRecentCategory(it.name) && !App.instance.parental.isLocked(it) }
         val recent = (itemsIn(Category.RECENT) + recentCats.flatMap { itemsIn(it.id) }).distinct()
         val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         val pool = (recent + all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
-        withContext(Dispatchers.Default) { Top.match(Top.Kind.CINEMA, entries, pool, name, year) }
+        withContext(Dispatchers.Default) { Top.match(com.extv.player.data.NetflixTop10.Kind.CINEMA, entries, pool, name, year) }
     }
     val sources = listOf(netflix, cinema) + others
     val picked = ArrayList<T>()
