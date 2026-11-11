@@ -95,7 +95,8 @@ suspend fun IptvRepository.seriesIn(categoryId: String): List<Series> =
 
 /** Films du Top 10 Netflix France présents dans le catalogue (rang, film), sans les catégories verrouillées. */
 suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
-    val entries = com.extv.player.data.NetflixTop10.entries()
+    // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
+    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
     if (entries.isEmpty()) return emptyList()
     val all = moviesIn(Category.ALL)
     return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
@@ -108,7 +109,8 @@ suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
 
 /** Séries du Top 10 Netflix France présentes dans le catalogue (rang, série). */
 suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> {
-    val entries = com.extv.player.data.NetflixTop10.entries()
+    // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
+    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
     if (entries.isEmpty()) return emptyList()
     val all = seriesIn(Category.ALL)
     return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
