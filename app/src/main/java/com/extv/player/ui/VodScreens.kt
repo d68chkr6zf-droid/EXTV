@@ -152,13 +152,13 @@ private fun <T> CatalogScreen(
     // Les tris / filtrages du catalogue (dizaines de milliers d'éléments) se font hors du thread de l'écran.
     // Au retour d'une fiche, l'accueil réaffiche aussitôt ce qu'il montrait (ScreenCache) et se met à jour derrière.
     val cachePrefix = "${store.activeProfileId}/$type"
-    val entries = rememberCachedLoader("$cachePrefix/entries") { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { loadEntries() } }
+    val entries = rememberCachedLoader<List<CategoryEntry>>("$cachePrefix/entries") { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { loadEntries() } }
     // Favoris lus une seule fois (et non pour chaque affiche affichée en faisant défiler les rangées).
     var favVersion by remember { mutableIntStateOf(0) }
     val favKeys = remember(favVersion) { store.favorites().mapTo(HashSet()) { it.key } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { favVersion++ }
     // Top 10 Netflix : chargé à part (téléchargement la première fois), la rangée apparaît quand il est prêt.
-    val top10 = rememberCachedLoader("$cachePrefix/top10", refresh = false) {
+    val top10 = rememberCachedLoader<List<Pair<Int, T>>>("$cachePrefix/top10", refresh = false) {
         try {
             // Attendu avant d'afficher l'accueil pour qu'il soit tout en haut dès l'ouverture
             // (le téléchargement du classement est limité à quelques secondes, voir Catalog.kt).
@@ -291,7 +291,7 @@ private fun <T> CatalogScreen(
             Box(Modifier.weight(1f).fillMaxWidth().onFocusChanged { contentFocused = it.hasFocus }) {
                 if (q.isEmpty() && category.id == HOME) {
                     // --- Accueil : rangées horizontales ---
-                    val home = rememberCachedLoader("$cachePrefix/home", list) {
+                    val home = rememberCachedLoader<List<HomeRow<T>>>("$cachePrefix/home", list) {
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                             val groups = loadItems(Category.ALL).groupBy(categoryOf)
                             buildList {
