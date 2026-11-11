@@ -232,6 +232,5 @@ suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
 }
 
 suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> =
-    top10Of<Series>(ContentType.SERIES, com.extv.player.data.NetflixTop10.Kind.TV, { seriesIn(it) }, { it.name }) { s ->
-        com.extv.player.data.NetflixTop10.yearIn(s.name)
-    }
+    top10Of<Series>(ContentType.SERIES, com.extv.player.data.NetflixTop10.Kind.TV, { seriesIn(it) }, { it.name },
+        { s -> com.extv.player.data.NetflixTop10.yearIn(s.name) })
