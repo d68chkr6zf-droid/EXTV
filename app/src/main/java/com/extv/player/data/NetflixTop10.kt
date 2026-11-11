@@ -306,5 +306,7 @@ object NetflixTop10 {
             val best = candidates.firstOrNull { e.year != null && year(it) == e.year } ?: candidates.firstOrNull()
             best?.let { used += it; e.rank to it }
         }
+            // Les 10 premiers titres présents dans l'abonnement, numérotés de 1 à 10.
+            .take(10).mapIndexed { i, p -> (i + 1) to p.second }
     }
 }
