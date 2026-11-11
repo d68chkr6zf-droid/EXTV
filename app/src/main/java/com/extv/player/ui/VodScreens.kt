@@ -299,7 +299,7 @@ private fun <T> CatalogScreen(
                     }
                     LoadView(top10) { _ -> LoadView(home) { rows ->
                         val all = remember(rows, top10List) {
-                            if (top10List.isEmpty()) rows else listOf(HomeRow(TOP10, "Top 10 en France cette semaine", top10List.map { it.second }, top10List.size)) + rows
+                            if (top10List.isEmpty()) rows else listOf(HomeRow(TOP10, "Top 10 du moment", top10List.map { it.second }, top10List.size)) + rows
                         }
                         val ranks = remember(top10List) { top10List.associate { key(it.second) to it.first } }
                         // L'écran s'ouvre sur la première rangée (le Top 10 quand il y en a un).
@@ -388,7 +388,7 @@ private fun <T> CatalogScreen(
                         LoadView(items) { loaded ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 4.dp)) {
                                 Text(
-                                    if (q.isNotEmpty()) "Résultats pour « ${query.trim()} »" else if (category.id == TOP10) "Top 10 en France cette semaine" else category.name,
+                                    if (q.isNotEmpty()) "Résultats pour « ${query.trim()} »" else if (category.id == TOP10) "Top 10 du moment" else category.name,
                                     fontSize = if (wide) 18.sp else 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,

@@ -29,9 +29,18 @@ def get(url, ua, timeout=120):
         return r.read()
 
 
-def netflix_rows():
+GLOBAL = [
+    "https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv",
+    "https://top10.netflix.com/data/all-weeks-global.tsv",
+]
+FR_WEEKS = 4      # semaines du classement France utilisées (la plus récente d'abord)
+GLOBAL_WEEKS = 2  # puis semaines du classement mondial
+PER_KIND = 60     # titres candidats par type (l'appli garde les 10 premiers présents dans l'abonnement)
+
+
+def tsv(urls):
     last = None
-    for url in SOURCES:
+    for url in urls:
         try:
             data = get(url, UA_BROWSER).decode("utf-8", "replace")
         except Exception as e:  # noqa: BLE001
@@ -39,19 +48,40 @@ def netflix_rows():
             print(f"échec {url} : {e}", file=sys.stderr)
             continue
         print(f"{url} : {len(data) // 1024} Ko")
-        rows = [r for r in csv.DictReader(io.StringIO(data), delimiter="\t") if r.get("country_iso2") == COUNTRY]
-        if not rows:
-            print("aucune ligne France", file=sys.stderr)
+        return list(csv.DictReader(io.StringIO(data), delimiter="\t"))
+    print(f"indisponible : {last}", file=sys.stderr)
+    return []
+
+
+def kind_of(category):
+    return "FILMS" if category.lower().startswith("film") else "TV"
+
+
+def netflix_rows():
+    """Candidats par ordre de priorité : Top 10 France des dernières semaines, puis Top 10 mondial."""
+    fr = [r for r in tsv(SOURCES) if r.get("country_iso2") == COUNTRY]
+    glob = tsv(GLOBAL)
+    if not fr and not glob:
+        raise SystemExit("Top 10 indisponible")
+    ordered = []
+    fr_weeks = sorted({r["week"] for r in fr}, reverse=True)[:FR_WEEKS]
+    for w in fr_weeks:
+        ordered += sorted((r for r in fr if r["week"] == w), key=lambda r: int(r["weekly_rank"]))
+    for w in sorted({r["week"] for r in glob}, reverse=True)[:GLOBAL_WEEKS]:
+        # Anglais et non anglais entrelacés par rang.
+        ordered += sorted((r for r in glob if r["week"] == w), key=lambda r: (int(r["weekly_rank"]), r["category"]))
+    out, seen = [], set()
+    count = {"FILMS": 0, "TV": 0}
+    for r in ordered:
+        kind = kind_of(r["category"])
+        title = r["show_title"].strip()
+        if (kind, title.lower()) in seen or count[kind] >= PER_KIND:
             continue
-        week = max(r["week"] for r in rows)
-        rows = [r for r in rows if r["week"] == week]
-        out = []
-        for r in rows:
-            kind = "FILMS" if r["category"].lower().startswith("film") else "TV"
-            out.append({"kind": kind, "rank": int(r["weekly_rank"]), "title": r["show_title"].strip()})
-        out.sort(key=lambda e: (e["kind"], e["rank"]))
-        return week, out
-    raise SystemExit(f"Top 10 indisponible : {last}")
+        seen.add((kind, title.lower()))
+        count[kind] += 1
+        out.append({"kind": kind, "rank": count[kind], "title": title})
+    out.sort(key=lambda e: (e["kind"], e["rank"]))
+    return (fr_weeks[0] if fr_weeks else ""), out
 
 
 def wikidata(params):
