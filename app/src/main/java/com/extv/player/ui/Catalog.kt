@@ -8,6 +8,7 @@ import com.extv.player.data.LiveChannel
 import com.extv.player.data.Movie
 import com.extv.player.data.Series
 import com.extv.player.data.lockedCategoryIds
+import com.extv.player.data.normalized
 
 /**
  * Construit les listes de catégories affichées (avec Tout, Favoris, Historique, Récemment ajouté
@@ -93,8 +94,24 @@ suspend fun IptvRepository.seriesEntries(): List<CategoryEntry> =
 suspend fun IptvRepository.seriesIn(categoryId: String): List<Series> =
     itemsOf(ContentType.SERIES, series(null), categoryId, { it.categoryId }, { it.id }, { it.added })
 
+
+/**
+ * Catégorie « Tendance sur Netflix » (ou « Top Netflix ») du serveur, si elle existe : ses titres sont déjà
+ * ceux de l'abonnement, avec leurs noms français. Elle sert de Top 10 en priorité.
+ */
+private suspend fun <T> IptvRepository.serverTop10(type: com.extv.player.data.ContentType, itemsIn: suspend (String) -> List<T>): List<Pair<Int, T>> {
+    val parental = App.instance.parental
+    val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !parental.isLocked(it) }
+    val netflix = cats.filter { it.name.normalized().contains("netflix") }
+    val best = netflix.firstOrNull { c -> c.name.normalized().let { it.contains("tendance") || it.contains("top") || it.contains("trend") } }
+        ?: netflix.firstOrNull()
+        ?: return emptyList()
+    return itemsIn(best.id).take(10).mapIndexed { i, item -> (i + 1) to item }
+}
+
 /** Films du Top 10 Netflix France présents dans le catalogue (rang, film), sans les catégories verrouillées. */
 suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
+    serverTop10(com.extv.player.data.ContentType.MOVIE) { moviesIn(it) }.takeIf { it.isNotEmpty() }?.let { return it }
     // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
     val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
     if (entries.isEmpty()) return emptyList()
@@ -109,6 +126,7 @@ suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
 
 /** Séries du Top 10 Netflix France présentes dans le catalogue (rang, série). */
 suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> {
+    serverTop10(com.extv.player.data.ContentType.SERIES) { seriesIn(it) }.takeIf { it.isNotEmpty() }?.let { return it }
     // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
     val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
     if (entries.isEmpty()) return emptyList()

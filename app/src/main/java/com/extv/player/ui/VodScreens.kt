@@ -291,7 +291,10 @@ private fun <T> CatalogScreen(
                                 virtual(Category.CONTINUE, "Reprendre la lecture", loadItems(Category.CONTINUE))
                                 virtual(Category.FAVORITES, "Favoris", loadItems(Category.FAVORITES))
                                 virtual(Category.RECENT, "Récemment ajouté", loadItems(Category.RECENT))
-                                list.filter { !Category.isVirtual(it.category.id) && !parental.isLocked(it.category) }.forEach { e ->
+                                // Catégories « Tendance sur … » du serveur en premier, juste après Reprendre / Favoris / Récents.
+                                list.filter { !Category.isVirtual(it.category.id) && !parental.isLocked(it.category) }
+                                    .sortedBy { if (it.category.name.normalized().contains("tendance")) 0 else 1 }
+                                    .forEach { e ->
                                     groups[e.category.id]?.let { add(HomeRow(e.category.id, e.category.name, it.take(ROW_LIMIT), it.size)) }
                                 }
                             }
