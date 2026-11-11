@@ -14,6 +14,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -256,7 +257,47 @@ private suspend fun <T> IptvRepository.top10Of(
     return picked.mapIndexed { i, item -> (i + 1) to item }
 }
 
-suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
+/**
+ * Dernier Top calculé, gardé sur la TV (identifiants, par profil et par type) : affiché tout de suite à l'ouverture,
+ * pendant que le nouveau se calcule en arrière-plan (classements, dates de sortie, rapprochements) pour la fois suivante.
+ */
+private object SavedTop {
+    private fun file(type: ContentType) =
+        java.io.File(App.instance.filesDir, "top_${App.instance.store.activeProfileId}_${type.name}.json")
+
+    fun load(type: ContentType): List<String>? = runCatching {
+        val a = org.json.JSONArray(file(type).readText())
+        (0 until a.length()).map { a.getString(it) }
+    }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+    fun save(type: ContentType, ids: List<String>) {
+        if (ids.isNotEmpty()) runCatching { file(type).writeText(org.json.JSONArray(ids).toString()) }
+    }
+}
+
+private val topScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+private suspend fun <T> fastTop(
+    type: ContentType,
+    idOf: (T) -> String,
+    all: suspend () -> List<T>,
+    compute: suspend () -> List<Pair<Int, T>>,
+): List<Pair<Int, T>> {
+    val saved = SavedTop.load(type)
+    if (saved != null) {
+        val byId = all().associateBy(idOf)
+        val list = saved.mapNotNull { byId[it] }
+        if (list.isNotEmpty()) {
+            topScope.launch { runCatching { compute() }.getOrNull()?.let { r -> SavedTop.save(type, r.map { idOf(it.second) }) } }
+            return list.mapIndexed { i, item -> (i + 1) to item }
+        }
+    }
+    return compute().also { r -> SavedTop.save(type, r.map { idOf(it.second) }) }
+}
+
+suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> = fastTop(ContentType.MOVIE, { it.id }, { moviesIn(Category.ALL) }) { top10MoviesNow() }
+
+private suspend fun IptvRepository.top10MoviesNow(): List<Pair<Int, Movie>> {
     val repo = this
     return top10Of<Movie>(
         ContentType.MOVIE, com.extv.player.data.NetflixTop10.Kind.FILMS, { moviesIn(it) }, { it.name },
@@ -266,6 +307,8 @@ suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
     )
 }
 
-suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> =
+suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> = fastTop(ContentType.SERIES, { it.id }, { seriesIn(Category.ALL) }) { top10SeriesNow() }
+
+private suspend fun IptvRepository.top10SeriesNow(): List<Pair<Int, Series>> =
     top10Of<Series>(ContentType.SERIES, com.extv.player.data.NetflixTop10.Kind.TV, { seriesIn(it) }, { it.name },
         { s -> com.extv.player.data.NetflixTop10.yearIn(s.name) })
