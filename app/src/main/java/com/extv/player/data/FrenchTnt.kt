@@ -12,7 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Chaque chaîne est prise dans l'abonnement (meilleure qualité, guide des programmes). Quand la chaîne
  * diffuse elle-même un direct gratuit et officiel, il sert de flux de secours si celui de l'abonnement
- * ne marche pas, et remplace la chaîne si l'abonnement ne l'a pas.
+ * échoue ou se fige, et remplace la chaîne si l'abonnement ne l'a pas. Sans direct officiel, le secours
+ * est une autre version de la même chaîne dans l'abonnement (ex. France 2 HD → France 2 SD).
  */
 object FrenchTnt {
     const val CATEGORY_NAME = "FR| TNT"
@@ -98,11 +99,14 @@ object FrenchTnt {
         val byKey = HashMap<String, MutableList<LiveChannel>>()
         all.forEach { ch -> byKey.getOrPut(key(ch.name)) { mutableListOf() } += ch }
         return CHANNELS.mapNotNull { e ->
-            val sub = e.keys.flatMap { byKey[it].orEmpty() }
-                .maxByOrNull { score(it, categoryNames[it.categoryId].orEmpty()) }
+            val ranked = e.keys.flatMap { byKey[it].orEmpty() }
+                .sortedByDescending { score(it, categoryNames[it.categoryId].orEmpty()) }
+            val sub = ranked.firstOrNull()
             when {
                 sub != null -> {
-                    if (e.official != null) backups[sub.id] = e.official
+                    // Secours : le direct officiel, sinon une autre version de la chaîne dans l'abonnement.
+                    val backup = e.official ?: ranked.drop(1).firstOrNull { it.streamUrl != sub.streamUrl }?.streamUrl
+                    if (backup != null) backups[sub.id] = backup else backups.remove(sub.id)
                     sub
                 }
                 e.official != null -> LiveChannel(

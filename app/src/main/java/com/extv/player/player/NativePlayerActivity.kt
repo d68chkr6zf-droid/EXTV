@@ -173,7 +173,7 @@ class NativePlayerActivity : ComponentActivity() {
     private val retryLive = Runnable { playCurrent() }
 
     /** Direct : si le serveur n'envoie plus rien pendant 10 s, on rouvre la chaîne. */
-    private val stuckLive = Runnable { if (live && player?.playWhenReady == true) playCurrent() }
+    private val stuckLive = Runnable { if (live && player?.playWhenReady == true && !tryBackup()) playCurrent() }
     private val STUCK_LIVE_MS = 10_000L
     private val tick = object : Runnable {
         override fun run() {
