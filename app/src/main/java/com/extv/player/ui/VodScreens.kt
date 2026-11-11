@@ -48,8 +48,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -542,17 +544,35 @@ private fun PillBar(
 /** Grand chiffre doré du Top 10 (contour or sur fond sombre), à gauche de l'affiche. */
 @Composable
 private fun RankNumber(rank: Int, posterWidth: androidx.compose.ui.unit.Dp) {
+    // Chiffre dessiné comme une forme (Path) et non comme du texte : certains boîtiers (Formuler) forcent
+    // le texte en blanc (« texte à contraste élevé ») et ignoraient le contour doré. Forme calculée une seule fois.
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val fontSize = with(density) { (posterWidth * 1.05f).toSp() }
-    val style = androidx.compose.ui.text.TextStyle(
-        fontSize = fontSize,
-        fontWeight = FontWeight.Black,
-        letterSpacing = with(density) { (-posterWidth * 0.08f).toSp() },
-        lineHeight = fontSize,
-    )
-    Box(Modifier.padding(end = 2.dp)) {
-        Text("$rank", style = style.copy(color = C.Bg))
-        Text("$rank", style = style.copy(color = C.Accent, drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 3.dp.toPx() })))
+    val strokePx = with(density) { 3.dp.toPx() }
+    val shape = remember(rank, posterWidth, density) {
+        val textPx = with(density) { (posterWidth * 1.05f).toPx() }
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = textPx
+            typeface = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 900, false)
+            } else {
+                android.graphics.Typeface.DEFAULT_BOLD
+            }
+            letterSpacing = -0.08f / 1.05f
+        }
+        val path = android.graphics.Path()
+        val text = "$rank"
+        paint.getTextPath(text, 0, text.length, 0f, 0f, path)
+        val bounds = android.graphics.RectF()
+        path.computeBounds(bounds, true)
+        path.offset(-bounds.left + strokePx, -bounds.top + strokePx)
+        Triple(path.asComposePath(), bounds.width() + 2 * strokePx, bounds.height() + 2 * strokePx)
+    }
+    val (path, w, h) = shape
+    androidx.compose.foundation.Canvas(
+        Modifier.padding(end = 2.dp).size(with(density) { w.toDp() }, with(density) { h.toDp() }),
+    ) {
+        drawPath(path, C.Bg)
+        drawPath(path, C.Accent, style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokePx))
     }
 }
 
