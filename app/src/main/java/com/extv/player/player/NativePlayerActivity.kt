@@ -10,6 +10,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -172,8 +173,31 @@ class NativePlayerActivity : ComponentActivity() {
     }
     private val retryLive = Runnable { playCurrent() }
 
-    /** Direct : si le serveur n'envoie plus rien pendant 10 s, on rouvre la chaîne. */
-    private val stuckLive = Runnable { if (live && player?.playWhenReady == true && !tryBackup()) playCurrent() }
+    /**
+     * Direct en chargement : tant que des données arrivent (la réserve se remplit), on attend. Si plus rien
+     * n'arrive pendant 4 s et que la chaîne a un secours, on bascule dessus ; sans secours, on rouvre après 10 s.
+     */
+    private var lastLoadAt = 0L
+    private var lastBuffered = 0L
+    private val stuckLive = object : Runnable {
+        override fun run() {
+            val p = player ?: return
+            if (!live || !p.playWhenReady || p.playbackState != Player.STATE_BUFFERING) return
+            val now = SystemClock.elapsedRealtime()
+            val buffered = p.bufferedPosition
+            if (buffered > lastBuffered + 200) {
+                lastBuffered = buffered
+                lastLoadAt = now
+            }
+            val silent = now - lastLoadAt
+            val hasBackup = wasReady && items.getOrNull(index)?.backupUrl != null
+            if ((hasBackup && silent > BACKUP_AFTER_MS) || silent > STUCK_LIVE_MS) {
+                if (!tryBackup()) playCurrent()
+                return
+            }
+            handler.postDelayed(this, 1_000)
+        }
+    }
     private val STUCK_LIVE_MS = 10_000L
     private val tick = object : Runnable {
         override fun run() {
@@ -414,9 +438,9 @@ class NativePlayerActivity : ComponentActivity() {
             if (state == Player.STATE_BUFFERING && wasReady) stalls++
             handler.removeCallbacks(stuckLive)
             if (state == Player.STATE_BUFFERING && live) {
-                // Gel en cours de lecture et chaîne avec un secours : on bascule vite ; sinon on rouvre après 10 s.
-                val hasBackup = wasReady && items.getOrNull(index)?.backupUrl != null
-                handler.postDelayed(stuckLive, if (hasBackup) BACKUP_AFTER_MS else STUCK_LIVE_MS)
+                lastLoadAt = SystemClock.elapsedRealtime()
+                lastBuffered = player?.bufferedPosition ?: 0L
+                handler.postDelayed(stuckLive, 1_000)
             }
             if (state == Player.STATE_ENDED) handler.post { onEnd() }
         }
@@ -456,7 +480,8 @@ class NativePlayerActivity : ComponentActivity() {
             handler.post {
                 if (isFinishing || isDestroyed || index != at) return@post
                 if (url != null) {
-                    items[at] = items[at].copy(url = url)
+                    // L'ancien flux devient le secours : si le nouveau se fige à son tour, on y revient.
+                    items[at] = items[at].copy(url = url, backupUrl = item.url)
                     playCurrent()
                 } else {
                     isBuffering = false
