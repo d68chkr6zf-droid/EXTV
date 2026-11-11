@@ -165,9 +165,12 @@ class PlayerActivity : ComponentActivity() {
     private var userPaused = false
     /** L'image a avancé au moins une fois depuis l'ouverture du flux (le démarrage ne compte pas comme un gel). */
     private var progressed = false
+    private var lastDataAt = 0L
+    private var lastBufferPercent = -1f
     private val watchLive = object : Runnable {
         override fun run() {
-            val frozen = SystemClock.elapsedRealtime() - lastProgressAt
+            // Figé : ni image qui avance, ni réserve qui se remplit (VLC qui recharge n'est pas figé).
+            val frozen = SystemClock.elapsedRealtime() - maxOf(lastProgressAt, lastDataAt)
             val hasBackup = progressed && items.getOrNull(index)?.backupUrl != null
             val limit = if (hasBackup) BACKUP_AFTER_MS else maxOf(12_000L, store.networkCaching + 10_000L)
             if (live && !userPaused && frozen > limit) {
@@ -267,6 +270,8 @@ class PlayerActivity : ComponentActivity() {
         lastProgressAt = SystemClock.elapsedRealtime()
         userPaused = false
         progressed = false
+        lastDataAt = 0L
+        lastBufferPercent = -1f
         if (live) handler.postDelayed(watchLive, 1_000)
         frenchChosen = false
         errorText = null
@@ -320,7 +325,8 @@ class PlayerActivity : ComponentActivity() {
             handler.post {
                 if (isFinishing || isDestroyed || index != at) return@post
                 if (url != null) {
-                    items[at] = items[at].copy(url = url)
+                    // L'ancien flux devient le secours : si le nouveau se fige à son tour, on y revient.
+                    items[at] = items[at].copy(url = url, backupUrl = item.url)
                     playCurrent()
                 } else {
                     isBuffering = false
@@ -349,6 +355,10 @@ class PlayerActivity : ComponentActivity() {
             }
             MediaPlayer.Event.Paused, MediaPlayer.Event.Stopped -> isPlaying = false
             MediaPlayer.Event.Buffering -> {
+                if (e.buffering != lastBufferPercent) {
+                    lastBufferPercent = e.buffering
+                    lastDataAt = SystemClock.elapsedRealtime()
+                }
                 bufferPercent = e.buffering
                 isBuffering = e.buffering < 100f
             }
