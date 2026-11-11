@@ -104,7 +104,9 @@ fun LiveScreen() {
     val entries = rememberLoader(Unit) { repo.liveEntries() }
     var selected by remember { mutableStateOf<Category?>(null) }
     var previewing by remember { mutableStateOf<LiveChannel?>(null) }
-    var focused by remember { mutableStateOf<LiveChannel?>(null) }
+    // Chaîne sous le focus : lue seulement par le panneau de droite, pour que chaque appui de flèche ne
+    // redessine pas tout l'écran (liste, catégories) mais uniquement ce panneau.
+    val focused = remember { mutableStateOf<LiveChannel?>(null) }
     var muted by remember { mutableStateOf(false) }
     val firstCategory = remember { FocusRequester() }
     val select = rememberCategoryGate { selected = it }
@@ -170,7 +172,7 @@ fun LiveScreen() {
                                     ch,
                                     favVersion = favVersion,
                                     isPreviewing = ch.id == previewing?.id,
-                                    modifier = Modifier.animateItem().moveKeys(
+                                    modifier = (if (mover.active) Modifier.animateItem() else Modifier).moveKeys(
                                         active = moving,
                                         onMove = { d ->
                                             if (d == MoveDir.UP) mover.shift(-1) else if (d == MoveDir.DOWN) mover.shift(1)
@@ -182,7 +184,7 @@ fun LiveScreen() {
                                     ),
                                     focusRequester = if (moving) moveFocus else null,
                                     moving = moving,
-                                    onFocus = { focused = ch },
+                                    onFocus = { focused.value = ch },
                                     onLongClick = { if (!mover.active) menuFor = itemKey },
                                     menu = {
                                         if (menuFor == itemKey) {
@@ -222,8 +224,8 @@ fun LiveScreen() {
                     CategorySidebar(list, category?.id, select, Modifier.width(260.dp).fillMaxHeight(), firstCategory, showSearch = false)
                     channelList(Modifier.weight(1f).fillMaxHeight())
                     ChannelPanel(
-                        channel = previewing ?: focused,
-                        guideChannel = focused ?: previewing,
+                        previewing = previewing,
+                        focused = { focused.value },
                         favVersion = favVersion,
                         previewUrl = previewing?.streamUrl,
                         muted = muted,
@@ -294,9 +296,9 @@ private fun ChannelRow(
 
 @Composable
 private fun ChannelPanel(
-    channel: LiveChannel?,
-    /** Chaîne dont on affiche le programme : celle sur laquelle on se trouve dans la liste. */
-    guideChannel: LiveChannel?,
+    previewing: LiveChannel?,
+    /** Chaîne sous le focus dans la liste (lue ici seulement) : c'est son programme qu'on affiche. */
+    focused: () -> LiveChannel?,
     favVersion: Int,
     previewUrl: String?,
     muted: Boolean,
@@ -307,7 +309,9 @@ private fun ChannelPanel(
 ) {
     val repo = App.instance.repository() ?: return
     val now = rememberNow()
-    val guide = guideChannel ?: channel
+    val current = focused()
+    val channel = previewing ?: current
+    val guide = current ?: previewing
     val epg = rememberLoader(guide?.id) {
         if (guide == null) {
             emptyList()

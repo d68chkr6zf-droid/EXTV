@@ -155,7 +155,7 @@ fun FavoritesScreen(
                 LazyRow(state = rowState, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     itemsIndexed(list, key = { _, f -> f.key }) { i, f ->
                         val isMoving = mover.isMoving(f)
-                        val cardModifier = Modifier.animateItem().moveKeys(
+                        val cardModifier = (if (mover.active) Modifier.animateItem() else Modifier).moveKeys(
                             active = isMoving,
                             onMove = { d -> if (d == MoveDir.LEFT) mover.shift(-1) else if (d == MoveDir.RIGHT) mover.shift(1) },
                             onDone = {
