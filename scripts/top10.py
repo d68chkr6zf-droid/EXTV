@@ -231,12 +231,14 @@ TAG = re.compile(r"<[^>]+>")
 CINEMA_MAX = 20
 
 
-def cinema():
-    """Box-office France de la semaine (entrées en salle), titres français d'AlloCiné, dans l'ordre du classement."""
+CINEMA_WEEKS = 26  # semaines de box-office relues (environ 6 mois : un film sorti en juillet est encore pris en novembre)
+
+
+def box_office_page(url):
     try:
-        page = get(BOX_OFFICE, UA_BROWSER, 60).decode("utf-8", "replace")
+        page = get(url, UA_BROWSER, 60).decode("utf-8", "replace")
     except Exception as e:  # noqa: BLE001
-        print(f"box-office indisponible : {e}", file=sys.stderr)
+        print(f"box-office indisponible {url} : {e}", file=sys.stderr)
         return []
     # Le tableau du classement commence au premier film classé (avant : menus et actualités).
     start = page.find("responsive-table")
@@ -244,12 +246,37 @@ def cinema():
     out, seen = [], set()
     for fid, raw in FILM_LINK.findall(body):
         title = html.unescape(TAG.sub("", raw)).strip()
-        if not title or fid in seen:
-            continue
-        seen.add(fid)
-        out.append({"kind": "CINEMA", "rank": len(out) + 1, "title": title, "alt": [], "year": time.gmtime().tm_year})
+        if title and fid not in seen:
+            seen.add(fid)
+            out.append((fid, title))
         if len(out) >= CINEMA_MAX:
             break
+    return out
+
+
+def cinema():
+    """Films en salle en France, titres français d'AlloCiné : le box-office de la semaine dans l'ordre (rang 1 à 20),
+    puis les films classés les semaines précédentes, du plus récent au plus ancien (rang 101 et suivants)."""
+    out, seen = [], set()
+    year = time.gmtime().tm_year
+    for fid, title in box_office_page(BOX_OFFICE):
+        seen.add(fid)
+        out.append({"kind": "CINEMA", "rank": len(out) + 1, "title": title, "alt": [], "year": year})
+    # Semaines AlloCiné : du mercredi au mardi, adresse /sem-AAAA-MM-JJ/ (date du mercredi).
+    today = time.time()
+    wd = time.gmtime(today).tm_wday  # lundi = 0, mercredi = 2
+    last_wed = today - ((wd - 2) % 7) * 86400
+    older = 100
+    for k in range(1, CINEMA_WEEKS + 1):
+        t = time.gmtime(last_wed - 7 * k * 86400)
+        url = f"{BOX_OFFICE}sem-{t.tm_year:04d}-{t.tm_mon:02d}-{t.tm_mday:02d}/"
+        for fid, title in box_office_page(url):
+            if fid in seen:
+                continue
+            seen.add(fid)
+            older += 1
+            out.append({"kind": "CINEMA", "rank": older, "title": title, "alt": [], "year": t.tm_year})
+        time.sleep(0.5)
     return out
 
 
