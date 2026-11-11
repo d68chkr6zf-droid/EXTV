@@ -290,11 +290,20 @@ object NetflixTop10 {
      * Places du classement retrouvées dans le catalogue, dans l'ordre du rang (chaque titre une seule fois).
      * year : année connue de l'élément du catalogue (ou null).
      */
-    fun <T> match(kind: Kind, entries: List<Entry>, catalog: List<T>, name: (T) -> String, year: (T) -> Int?): List<Pair<Int, T>> {
+    fun <T> match(
+        kind: Kind,
+        entries: List<Entry>,
+        catalog: List<T>,
+        name: (T) -> String,
+        year: (T) -> Int?,
+        /** Titres de la catégorie « Tendance sur Netflix » du serveur : rapprochés plus largement. */
+        trending: List<T> = emptyList(),
+    ): List<T> {
         val byKey = HashMap<String, MutableList<T>>()
         catalog.forEach { item ->
             titleKeys(name(item)).forEach { k -> byKey.getOrPut(k) { ArrayList(1) } += item }
         }
+        val trendingKeys = trending.map { it to titleKeys(name(it)) }
         val used = HashSet<T>()
         // Un même titre peut revenir plusieurs fois (une ligne par saison) : on garde son meilleur rang.
         return entries.filter { it.kind == kind }.sortedBy { it.rank }.distinctBy { titleKey(it.title) }.mapNotNull { e ->
@@ -304,9 +313,11 @@ object NetflixTop10 {
             // L'année (souvent celle d'un homonyme plus ancien sur Wikidata) départage seulement, sans exclure.
             val candidates = keys.flatMap { byKey[it].orEmpty() }.distinct().filter { it !in used }
             val best = candidates.firstOrNull { e.year != null && year(it) == e.year } ?: candidates.firstOrNull()
-            best?.let { used += it; e.rank to it }
+                // Dans « Tendance sur Netflix », un titre qui contient l'autre suffit (« Lupin » / « Lupin 4K »).
+                ?: trendingKeys.firstOrNull { (item, tk) ->
+                    item !in used && tk.any { a -> keys.any { b -> minOf(a.length, b.length) >= 5 && (a.contains(b) || b.contains(a)) } }
+                }?.first
+            best?.also { used += it }
         }
-            // Les 10 premiers titres présents dans l'abonnement, numérotés de 1 à 10.
-            .take(10).mapIndexed { i, p -> (i + 1) to p.second }
     }
 }

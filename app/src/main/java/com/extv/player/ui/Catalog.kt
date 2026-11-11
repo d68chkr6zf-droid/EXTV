@@ -96,45 +96,50 @@ suspend fun IptvRepository.seriesIn(categoryId: String): List<Series> =
 
 
 /**
- * Catégorie « Tendance sur Netflix » (ou « Top Netflix ») du serveur, si elle existe : ses titres sont déjà
- * ceux de l'abonnement, avec leurs noms français. Elle sert de Top 10 en priorité.
+ * Catégorie « Tendance sur Netflix » (ou « Top Netflix ») du serveur, si elle existe : titres de l'abonnement,
+ * avec leurs noms français.
  */
-private suspend fun <T> IptvRepository.serverTop10(type: com.extv.player.data.ContentType, itemsIn: suspend (String) -> List<T>): List<Pair<Int, T>> {
+private suspend fun <T> IptvRepository.serverTrending(type: ContentType, itemsIn: suspend (String) -> List<T>): List<T> {
     val parental = App.instance.parental
     val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !parental.isLocked(it) }
     val netflix = cats.filter { it.name.normalized().contains("netflix") }
     val best = netflix.firstOrNull { c -> c.name.normalized().let { it.contains("tendance") || it.contains("top") || it.contains("trend") } }
         ?: netflix.firstOrNull()
         ?: return emptyList()
-    return itemsIn(best.id).take(10).mapIndexed { i, item -> (i + 1) to item }
+    return itemsIn(best.id)
 }
 
-/** Films du Top 10 Netflix France présents dans le catalogue (rang, film), sans les catégories verrouillées. */
-suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
-    serverTop10(com.extv.player.data.ContentType.MOVIE) { moviesIn(it) }.takeIf { it.isNotEmpty() }?.let { return it }
+/**
+ * Top 10 : titres du vrai classement Netflix (France, puis mondial) présents dans l'abonnement, dans l'ordre
+ * du classement ; complété par la catégorie « Tendance sur Netflix » du serveur ; numérotés de 1 à 10.
+ */
+private suspend fun <T> IptvRepository.top10Of(
+    type: ContentType,
+    kind: com.extv.player.data.NetflixTop10.Kind,
+    itemsIn: suspend (String) -> List<T>,
+    name: (T) -> String,
+    year: (T) -> Int?,
+): List<Pair<Int, T>> {
+    val trending = serverTrending(type, itemsIn)
     // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
-    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
-    if (entries.isEmpty()) return emptyList()
-    val all = moviesIn(Category.ALL)
-    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-        com.extv.player.data.NetflixTop10.match(
-            com.extv.player.data.NetflixTop10.Kind.FILMS, entries, all, { it.name },
-            { m -> m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name) },
-        )
+    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() }.orEmpty()
+    val matched = if (entries.isEmpty()) {
+        emptyList()
+    } else {
+        val all = itemsIn(Category.ALL)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.extv.player.data.NetflixTop10.match(kind, entries, all, name, year, trending)
+        }
     }
+    return (matched + trending).distinct().take(10).mapIndexed { i, item -> (i + 1) to item }
 }
 
-/** Séries du Top 10 Netflix France présentes dans le catalogue (rang, série). */
-suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> {
-    serverTop10(com.extv.player.data.ContentType.SERIES) { seriesIn(it) }.takeIf { it.isNotEmpty() }?.let { return it }
-    // Classement attendu 8 s au plus (il continue de se charger en arrière-plan pour la prochaine fois).
-    val entries = kotlinx.coroutines.withTimeoutOrNull(8_000) { com.extv.player.data.NetflixTop10.entries() } ?: return emptyList()
-    if (entries.isEmpty()) return emptyList()
-    val all = seriesIn(Category.ALL)
-    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-        com.extv.player.data.NetflixTop10.match(
-            com.extv.player.data.NetflixTop10.Kind.TV, entries, all, { it.name },
-            { s -> com.extv.player.data.NetflixTop10.yearIn(s.name) },
-        )
+suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> =
+    top10Of<Movie>(ContentType.MOVIE, com.extv.player.data.NetflixTop10.Kind.FILMS, { moviesIn(it) }, { it.name }) { m ->
+        m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name)
     }
-}
+
+suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> =
+    top10Of<Series>(ContentType.SERIES, com.extv.player.data.NetflixTop10.Kind.TV, { seriesIn(it) }, { it.name }) { s ->
+        com.extv.player.data.NetflixTop10.yearIn(s.name)
+    }
