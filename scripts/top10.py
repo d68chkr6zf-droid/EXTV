@@ -5,7 +5,7 @@ Source : fichier public hebdomadaire de Netflix (all-weeks-countries.tsv). Netfl
 titres anglais : chaque titre est cherché sur Wikidata pour obtenir ses titres français.
 Aucune dépendance (bibliothèque standard uniquement).
 """
-import csv, io, json, re, sys, time, unicodedata, urllib.parse, urllib.request
+import csv, io, json, re, sys, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 COUNTRY = "FR"
 SOURCES = [
@@ -24,9 +24,18 @@ NOT_A_WORK = re.compile(r"genre|type of|disambiguation|wikimedia|concept|term\b|
 
 
 def get(url, ua, timeout=120):
-    req = urllib.request.Request(url, headers={"User-Agent": ua, "Accept-Encoding": "identity"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    last = None
+    for attempt in range(4):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": ua, "Accept-Encoding": "identity"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError:
+            raise
+        except Exception as e:  # noqa: BLE001  (coupure en cours de téléchargement : on réessaie)
+            last = e
+            time.sleep(3 * (attempt + 1))
+    raise last
 
 
 GLOBAL = [
@@ -119,6 +128,8 @@ def wikipedia_item(title, kind):
     for p in sorted(pages.values(), key=lambda p: p.get("index", 99)):
         desc = p.get("description", "")
         qid = p.get("pageprops", {}).get("wikibase_item")
+        if simple(re.sub(r"\s*\(.*\)$", "", p.get("title", ""))) != simple(title):
+            continue  # résultat d'une recherche plein texte sur un autre titre
         if qid and is_work(desc, kind):
             y = YEAR.search(desc)
             return qid, int(y.group(0)) if y else None
@@ -156,6 +167,8 @@ def wikipedia_exact(title, kind):
             continue
         desc = p.get("description", "")
         qid = p.get("pageprops", {}).get("wikibase_item")
+        if simple(re.sub(r"\s*\(.*\)$", "", target)) != simple(title):
+            continue  # redirigé vers une autre œuvre (« Not a Stranger » -> « Stranger »)
         # Titre avec précision « (2026 TV series) » : c'est forcément l'œuvre ; titre nu : on vérifie la description.
         ok = not NOT_A_WORK.search(desc) if name != title else is_work(desc, kind)
         if qid and ok:
