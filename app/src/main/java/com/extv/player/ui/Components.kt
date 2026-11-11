@@ -712,6 +712,38 @@ fun <T> rememberLoader(vararg keys: Any?, block: suspend () -> T): Loader<T> {
     return Loader(state.value) { attempt++ }
 }
 
+/** Derniers résultats des écrans (accueil Films / Séries…), gardés pendant que l'appli tourne. */
+object ScreenCache {
+    val values = java.util.concurrent.ConcurrentHashMap<String, Any>()
+}
+
+/**
+ * Comme [rememberLoader], mais le dernier résultat obtenu pour [cacheKey] s'affiche aussitôt quand on
+ * revient sur l'écran (retour d'une fiche) au lieu de tout recalculer. Avec [refresh], le calcul est
+ * refait en arrière-plan et remplace l'affichage une fois prêt (favoris, reprise de lecture à jour).
+ */
+@Composable
+fun <T : Any> rememberCachedLoader(cacheKey: String, vararg keys: Any?, refresh: Boolean = true, block: suspend () -> T): Loader<T> {
+    var attempt by remember { mutableIntStateOf(0) }
+    val currentBlock by rememberUpdatedState(block)
+    @Suppress("UNCHECKED_CAST")
+    val cached = remember(cacheKey) { ScreenCache.values[cacheKey] as T? }
+    val state: State<Load<T>> = produceState<Load<T>>(cached?.let { Load.Ok(it) } ?: Load.Loading, cacheKey, *keys, attempt) {
+        if (value is Load.Ok && !refresh && attempt == 0) return@produceState
+        if (value !is Load.Ok) value = Load.Loading
+        try {
+            val v = currentBlock()
+            ScreenCache.values[cacheKey] = v
+            value = Load.Ok(v)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (value !is Load.Ok) value = Load.Err(e)
+        }
+    }
+    return Loader(state.value) { attempt++ }
+}
+
 @Composable
 fun <T> LoadView(loader: Loader<T>, modifier: Modifier = Modifier.fillMaxSize(), content: @Composable (T) -> Unit) {
     when (val s = loader.state) {
