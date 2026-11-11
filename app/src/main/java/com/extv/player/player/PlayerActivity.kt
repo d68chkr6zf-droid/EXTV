@@ -163,14 +163,18 @@ class PlayerActivity : ComponentActivity() {
     /** Direct : si l'image n'avance plus (serveur muet) au-delà de la réserve + 10 s, on rouvre la chaîne. */
     private var lastProgressAt = 0L
     private var userPaused = false
+    /** L'image a avancé au moins une fois depuis l'ouverture du flux (le démarrage ne compte pas comme un gel). */
+    private var progressed = false
     private val watchLive = object : Runnable {
         override fun run() {
-            val limit = maxOf(12_000L, store.networkCaching + 10_000L)
-            if (live && !userPaused && SystemClock.elapsedRealtime() - lastProgressAt > limit) {
+            val frozen = SystemClock.elapsedRealtime() - lastProgressAt
+            val hasBackup = progressed && items.getOrNull(index)?.backupUrl != null
+            val limit = if (hasBackup) BACKUP_AFTER_MS else maxOf(12_000L, store.networkCaching + 10_000L)
+            if (live && !userPaused && frozen > limit) {
                 if (!tryBackup()) playCurrent()
                 return
             }
-            handler.postDelayed(this, 2_000)
+            handler.postDelayed(this, 1_000)
         }
     }
 
@@ -262,7 +266,8 @@ class PlayerActivity : ComponentActivity() {
         val item = items.getOrNull(index) ?: return
         lastProgressAt = SystemClock.elapsedRealtime()
         userPaused = false
-        if (live) handler.postDelayed(watchLive, 2_000)
+        progressed = false
+        if (live) handler.postDelayed(watchLive, 1_000)
         frenchChosen = false
         errorText = null
         baseOffset = if (item.replayUrlAt != null) offset else 0L
@@ -349,6 +354,7 @@ class PlayerActivity : ComponentActivity() {
             }
             MediaPlayer.Event.TimeChanged -> {
                 lastProgressAt = SystemClock.elapsedRealtime()
+                progressed = true
                 if (pendingTarget == null) timeMs = baseOffset + e.timeChanged
             }
             MediaPlayer.Event.LengthChanged -> lengthMs = items.getOrNull(index)?.durationMs ?: e.lengthChanged
@@ -804,6 +810,8 @@ class PlayerActivity : ComponentActivity() {
         private const val NEXT_HIDE_MS = 40_000L
         private const val NEXT_PLAIN_COUNT = 2
         private const val NEXT_FADE_MS = 1500
+        /** Direct figé depuis ce délai (après avoir démarré) : bascule sur le flux de secours de la chaîne. */
+        private const val BACKUP_AFTER_MS = 4_000L
         private val SCALES = listOf(
             MediaPlayer.ScaleType.SURFACE_BEST_FIT to "Automatique",
             MediaPlayer.ScaleType.SURFACE_FIT_SCREEN to "Ajuster à l'écran",
