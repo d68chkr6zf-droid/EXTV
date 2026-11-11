@@ -62,6 +62,30 @@ object FrenchTnt {
 
     fun backupFor(channelId: String): String? = backups[channelId] ?: alternates[channelId]
 
+    /** Versions d'une même chaîne par adresse de flux : (adresse, niveau de qualité), de la meilleure à la plus légère. */
+    @Volatile private var variants: Map<String, List<Pair<String, Int>>> = emptyMap()
+
+    /**
+     * Version plus légère de la chaîne dont le flux est [url] (FHD → HD → SD), ou null s'il n'y en a pas.
+     * Sert au lecteur pour suivre un réseau qui faiblit.
+     */
+    fun lighterFor(url: String): String? {
+        val group = variants[url] ?: return null
+        val level = group.firstOrNull { it.first == url }?.second ?: return null
+        return group.filter { it.second < level }.maxByOrNull { it.second }?.first
+    }
+
+    /** Niveau de qualité d'après le nom : 4 = 4K, 3 = FHD, 2 = HD (ou rien d'indiqué), 1 = SD. */
+    private fun level(name: String): Int {
+        val t = tokens(name).toSet()
+        return when {
+            "4k" in t || "uhd" in t || "2160p" in t || "8k" in t -> 4
+            "fhd" in t || "1080" in t || "1080p" in t -> 3
+            "sd" in t || "576p" in t || "480p" in t -> 1
+            else -> 2
+        }
+    }
+
     /**
      * Pour chaque chaîne, une autre version de la même chaîne (même pays, nom identique hors qualité :
      * « FR| France 2 FHD » / « FR| France 2 HD »), de préférence dans la même catégorie et pas en 4K.
@@ -78,8 +102,11 @@ object FrenchTnt {
             groups.getOrPut("$country/$k") { mutableListOf() } += ch
         }
         val map = HashMap<String, String>()
+        val byUrl = HashMap<String, List<Pair<String, Int>>>()
         groups.values.forEach { group ->
             if (group.size < 2) return@forEach
+            val levels = group.map { it.streamUrl to level(it.name) }.distinctBy { it.first }.sortedByDescending { it.second }
+            levels.forEach { byUrl[it.first] = levels }
             group.forEach { ch ->
                 group.filter { it.streamUrl != ch.streamUrl }
                     .maxByOrNull { (if (it.categoryId == ch.categoryId) 20 else 0) + score(it, "") }
@@ -87,6 +114,7 @@ object FrenchTnt {
             }
         }
         alternates = map
+        variants = byUrl
         indexed = all
     }
 
