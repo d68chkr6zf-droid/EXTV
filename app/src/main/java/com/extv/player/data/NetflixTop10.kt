@@ -47,7 +47,7 @@ object NetflixTop10 {
         "https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv",
         "https://top10.netflix.com/data/all-weeks-countries.tsv",
     )
-    private const val REFRESH_MS = 6L * 3600 * 1000
+    private const val REFRESH_MS = 30L * 60 * 1000
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -59,7 +59,7 @@ object NetflixTop10 {
     private val mutex = Mutex()
     @Volatile private var memory: List<Entry>? = null
 
-    private val cacheFile get() = File(App.instance.filesDir, "top10_v3.json")
+    private val cacheFile get() = File(App.instance.filesDir, "top10_v4.json")
 
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     @Volatile private var job: kotlinx.coroutines.Deferred<List<Entry>>? = null
