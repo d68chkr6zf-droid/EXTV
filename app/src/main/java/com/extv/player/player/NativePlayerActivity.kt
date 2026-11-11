@@ -199,6 +199,65 @@ class NativePlayerActivity : ComponentActivity() {
         }
     }
     private val STUCK_LIVE_MS = 10_000L
+
+    // --- Qualité qui suit le réseau (direct) ----------------------------------------------------------
+    // Deux arrêts pour recharger en moins d'une minute : on passe à la version plus légère de la chaîne
+    // (FHD → HD → SD), avec le même nom à l'écran. Quand le réseau est redevenu stable (aucun arrêt pendant
+    // upgradeAfterMs), on revient à la version de départ ; si elle recoupe, le prochain essai attend deux
+    // fois plus longtemps. Une seule connexion à la fois (limite de l'abonnement) : le changement de
+    // version recharge donc la chaîne (une à deux secondes).
+    private val recentStalls = ArrayDeque<Long>()
+    private var adaptIndex = -1
+    private var fullUrl: String? = null
+    private var lighterSince = 0L
+    private var lastStallAt = 0L
+    private var upgradeAfterMs = UPGRADE_AFTER_MS
+
+    private fun syncAdapt() {
+        if (adaptIndex == index) return
+        adaptIndex = index
+        fullUrl = null
+        recentStalls.clear()
+        lighterSince = 0L
+        lastStallAt = 0L
+        upgradeAfterMs = UPGRADE_AFTER_MS
+    }
+
+    private fun onLiveStall() {
+        if (!live) return
+        syncAdapt()
+        val now = SystemClock.elapsedRealtime()
+        lastStallAt = now
+        recentStalls.addLast(now)
+        while (recentStalls.isNotEmpty() && now - recentStalls.first() > STALL_WINDOW_MS) recentStalls.removeFirst()
+        if (recentStalls.size < 2) return
+        val item = items.getOrNull(index) ?: return
+        val lighter = com.extv.player.data.FrenchTnt.lighterFor(item.url) ?: return
+        recentStalls.clear()
+        // Déjà redescendu après un retour à la version de départ : le prochain essai attendra plus longtemps.
+        if (fullUrl == null && lighterSince != 0L) upgradeAfterMs = (upgradeAfterMs * 2).coerceAtMost(60 * 60_000L)
+        if (fullUrl == null) fullUrl = item.url
+        lighterSince = now
+        items[index] = item.copy(url = lighter, backupUrl = item.url)
+        handler.post { playCurrent() }
+    }
+
+    private val adaptCheck = object : Runnable {
+        override fun run() {
+            handler.postDelayed(this, 30_000)
+            val p = player ?: return
+            if (!live || p.playbackState != Player.STATE_READY) return
+            syncAdapt()
+            val full = fullUrl ?: return
+            val now = SystemClock.elapsedRealtime()
+            if (now - lighterSince < upgradeAfterMs || now - lastStallAt < upgradeAfterMs) return
+            val item = items.getOrNull(index) ?: return
+            fullUrl = null
+            if (item.url == full) return
+            items[index] = item.copy(url = full, backupUrl = item.url)
+            playCurrent()
+        }
+    }
     private val tick = object : Runnable {
         override fun run() {
             player?.let {
@@ -360,6 +419,7 @@ class NativePlayerActivity : ComponentActivity() {
         playerView.player = player
         playCurrent()
         handler.post(tick)
+        handler.postDelayed(adaptCheck, 30_000)
     }
 
     override fun onStop() {
@@ -435,7 +495,10 @@ class NativePlayerActivity : ComponentActivity() {
                 errorText = null
                 wasReady = true
             }
-            if (state == Player.STATE_BUFFERING && wasReady) stalls++
+            if (state == Player.STATE_BUFFERING && wasReady) {
+                stalls++
+                onLiveStall()
+            }
             handler.removeCallbacks(stuckLive)
             if (state == Player.STATE_BUFFERING && live) {
                 lastLoadAt = SystemClock.elapsedRealtime()
@@ -1008,6 +1071,8 @@ class NativePlayerActivity : ComponentActivity() {
         private const val NEXT_FADE_MS = 1500
         /** Direct figé depuis ce délai (après avoir démarré) : bascule sur le flux de secours de la chaîne. */
         private const val BACKUP_AFTER_MS = 4_000L
+        private const val STALL_WINDOW_MS = 60_000L
+        private const val UPGRADE_AFTER_MS = 10 * 60_000L
         private val SCALES = listOf(
             AspectRatioFrameLayout.RESIZE_MODE_FIT to "Automatique",
             AspectRatioFrameLayout.RESIZE_MODE_FILL to "Ajuster à l'écran",
