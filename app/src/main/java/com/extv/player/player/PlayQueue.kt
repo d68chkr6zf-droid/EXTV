@@ -26,6 +26,8 @@ data class PlayItem(
     val durationMs: Long? = null,
     /** Favori correspondant (appui long sur OK pendant la lecture). */
     val favorite: Favorite? = null,
+    /** Flux officiel gratuit de la chaîne, essayé si [url] ne marche pas (voir FrenchTnt.resolve). */
+    val backupUrl: String? = null,
 )
 
 /**

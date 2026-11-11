@@ -61,7 +61,10 @@ import com.extv.player.data.toFavorite
 import com.extv.player.player.PlayItem
 import com.extv.player.player.PlayQueue
 
-fun LiveChannel.toPlayItem() = PlayItem(streamUrl, name, historyType = ContentType.LIVE, historyId = id, favorite = toFavorite())
+fun LiveChannel.toPlayItem() = PlayItem(
+    streamUrl, name, historyType = ContentType.LIVE, historyId = id, favorite = toFavorite(),
+    backupUrl = com.extv.player.data.FrenchTnt.backupFor(id),
+)
 
 /** Logo de la chaîne, ou ses initiales si le fournisseur n'en donne pas. */
 @Composable
@@ -127,7 +130,7 @@ fun LiveScreen() {
             LaunchedEffect(Unit) {
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
+            val category = selected ?: (list.firstOrNull { !Category.isVirtual(it.category.id) }?.category ?: list.firstOrNull()?.category)
             val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
             val inFavorites = category?.id == Category.FAVORITES
             LaunchedEffect(category?.id) { mover.reset() }
@@ -381,7 +384,7 @@ fun GuideScreen() {
             LaunchedEffect(Unit) {
                 runCatching { firstCategory.requestFocus() }
             }
-            val category = selected ?: (list.getOrNull(3)?.category ?: list.firstOrNull()?.category)
+            val category = selected ?: (list.firstOrNull { !Category.isVirtual(it.category.id) }?.category ?: list.firstOrNull()?.category)
             val channels = rememberLoader(category?.id) { category?.let { repo.liveIn(it.id) }.orEmpty() }
             val grid: @Composable (Modifier) -> Unit = { m ->
                 LoadView(channels, m) { chs ->
