@@ -92,7 +92,11 @@ fun FavoritesScreen(
             runCatching {
                 when (f.type) {
                     ContentType.LIVE -> {
-                        val all = repo.liveChannels(null).associateBy { it.id }
+                        val list = repo.liveChannels(null)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            com.extv.player.data.FrenchTnt.indexAlternates(list)
+                        }
+                        val all = list.associateBy { it.id }
                         val channels = favorites.filter { it.type == ContentType.LIVE }.mapNotNull { all[it.id] }
                         val index = channels.indexOfFirst { it.id == f.id }
                         if (index >= 0) PlayQueue.start(context, channels.map { it.toPlayItem() }, index, live = true)
