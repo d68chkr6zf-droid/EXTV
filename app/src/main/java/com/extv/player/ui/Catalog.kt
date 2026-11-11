@@ -154,7 +154,7 @@ private fun isRecentCategory(name: String): Boolean = name.normalized().let {
 /**
  * Top 10 mélangé, à tour de rôle :
  *  - Netflix : vrai classement (France puis mondial) retrouvé dans l'abonnement, complété par « Tendance sur Netflix » ;
- *  - Cinéma (films seulement) : box-office France de la semaine, retrouvé parmi les films récemment ajoutés ;
+ *  - Cinéma (films seulement) : « VOD Récemment ajouté », box-office de la semaine d'abord puis par date de sortie ;
  *  - puis chaque autre « Tendance sur … » du serveur (Prime Video, Disney+, Apple TV+, HBO…).
  * Chaque titre une seule fois, numérotés de 1 à 10.
  */
@@ -164,6 +164,8 @@ private suspend fun <T> IptvRepository.top10Of(
     itemsIn: suspend (String) -> List<T>,
     name: (T) -> String,
     year: (T) -> Int?,
+    /** Date de sortie (« 2026-10-22 ») de chaque élément, quand on peut la connaître (films). */
+    releaseDates: (suspend (List<T>) -> Map<T, String?>)? = null,
 ): List<Pair<Int, T>> {
     val Top = com.extv.player.data.NetflixTop10
     val trendCats = serverTrendingCategories(type)
@@ -176,21 +178,28 @@ private suspend fun <T> IptvRepository.top10Of(
     val netflix = withContext(Dispatchers.Default) {
         if (entries.isEmpty()) emptyList() else Top.match(kind, entries, all, name, year, netflixTrending)
     } + netflixTrending
-    val cinema = if (kind != com.extv.player.data.NetflixTop10.Kind.FILMS || entries.none { it.kind == com.extv.player.data.NetflixTop10.Kind.CINEMA }) emptyList() else {
-        // Films au cinéma : cherchés dans la catégorie « VOD Récemment ajouté » du serveur (là où le fournisseur met
+    val cinema = if (kind != com.extv.player.data.NetflixTop10.Kind.FILMS) emptyList() else {
+        // Films au cinéma : pris dans la catégorie « VOD Récemment ajouté » du serveur (là où le fournisseur met
         // les sorties récentes). Sans cette catégorie : nouveautés du serveur, « Récemment ajouté » et films de l'année.
         val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !App.instance.parental.isLocked(it) }
         val vodRecent = cats.filter { it.name.normalized().let { n -> n.contains("recemment") || n.contains("recent") } }
             .sortedBy { if (it.name.normalized().contains("vod")) 0 else 1 }.take(1)
+        val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         val pool = if (vodRecent.isNotEmpty()) {
             itemsIn(vodRecent[0].id)
         } else {
-            val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
             (cats.filter { isRecentCategory(it.name) }.flatMap { itemsIn(it.id) } + itemsIn(Category.RECENT) +
                 all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
         }
-        // Rapprochement large dans cette catégorie (« Dune : Troisième partie » / « Dune 3 (2026) 4K »).
-        withContext(Dispatchers.Default) { com.extv.player.data.NetflixTop10.match(com.extv.player.data.NetflixTop10.Kind.CINEMA, entries, pool, name, year, pool) }
+        // Dates de sortie : la plus récente d'abord ; les films sortis avant l'an dernier sont écartés.
+        val dates = releaseDates?.invoke(pool).orEmpty()
+        fun dateOf(it: T): String? = dates[it] ?: year(it)?.toString()
+        val recent = pool.filter { dateOf(it)?.take(4)?.toIntOrNull()?.let { y -> y >= thisYear - 1 } ?: true }
+        // 1) Box-office de la semaine retrouvé dans cette catégorie (rapprochement large, « Dune : Troisième partie » / « Dune 3 »).
+        val boxOffice = if (entries.none { it.kind == com.extv.player.data.NetflixTop10.Kind.CINEMA }) emptyList() else
+            withContext(Dispatchers.Default) { com.extv.player.data.NetflixTop10.match(com.extv.player.data.NetflixTop10.Kind.CINEMA, entries, recent, name, year, recent) }
+        // 2) Puis les autres films de la catégorie, par date de sortie (les plus récents sont ceux encore au cinéma).
+        boxOffice + recent.filter { it !in boxOffice }.sortedByDescending { dateOf(it) ?: "" }
     }
     val sources = listOf(netflix, cinema) + others
     val picked = ArrayList<T>()
@@ -213,10 +222,14 @@ private suspend fun <T> IptvRepository.top10Of(
     return picked.mapIndexed { i, item -> (i + 1) to item }
 }
 
-suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> =
-    top10Of<Movie>(ContentType.MOVIE, com.extv.player.data.NetflixTop10.Kind.FILMS, { moviesIn(it) }, { it.name }) { m ->
-        m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name)
-    }
+suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
+    val repo = this
+    return top10Of<Movie>(
+        ContentType.MOVIE, com.extv.player.data.NetflixTop10.Kind.FILMS, { moviesIn(it) }, { it.name },
+        { m -> m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name) },
+        { list -> val d = com.extv.player.data.ReleaseDates.of(repo, list); list.associateWith { d[it.id] } },
+    )
+}
 
 suspend fun IptvRepository.top10Series(): List<Pair<Int, Series>> =
     top10Of<Series>(ContentType.SERIES, com.extv.player.data.NetflixTop10.Kind.TV, { seriesIn(it) }, { it.name }) { s ->

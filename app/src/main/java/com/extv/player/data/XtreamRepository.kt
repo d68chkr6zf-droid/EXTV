@@ -154,6 +154,9 @@ class XtreamRepository(
                     streamUrl = "$base/movie/$user/$pass/$id.$ext",
                     rating = o["rating"]?.takeIf { it != "0" },
                     added = (o["added"]?.toLongOrNull() ?: 0) * 1000,
+                    // Certains serveurs donnent la sortie dès la liste (sinon : fiche du film, voir ReleaseDates).
+                    releaseDate = o["release_date"] ?: o["releasedate"] ?: o["releaseDate"],
+                    year = o["year"]?.take(4),
                 )
             }.also {
                 movieCache = it
@@ -191,7 +194,8 @@ class XtreamRepository(
             rating = info.str("rating")?.takeIf { it != "0" } ?: movie.rating,
             genre = info.str("genre"),
             duration = info.str("duration"),
-            year = info.str("releasedate")?.take(4),
+            year = (info.str("releasedate") ?: info.str("release_date"))?.take(4) ?: movie.year,
+            releaseDate = info.str("releasedate") ?: info.str("release_date") ?: movie.releaseDate,
             cast = info.str("cast") ?: info.str("actors"),
             director = info.str("director"),
             poster = info.str("movie_image") ?: info.str("cover_big") ?: movie.poster,
