@@ -358,7 +358,7 @@ private fun <T> CatalogScreen(
                                                 }
                                                 val rank = if (row.id == TOP10) ranks[key(item)] else null
                                                 if (rank != null) {
-                                                    Row(verticalAlignment = Alignment.Bottom) {
+                                                    Row(Modifier.showWholeWhenFocused(), verticalAlignment = Alignment.Bottom) {
                                                         RankNumber(rank, posterWidth)
                                                         card(item, row.id, Modifier.width(posterWidth).offset(x = (-posterWidth * 0.08f)), requester, false, row.items)
                                                     }

@@ -60,6 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -272,6 +276,19 @@ private val InstantBringIntoView = object : androidx.compose.foundation.gestures
             else -> trailing - containerSize
         }
     }
+}
+
+/**
+ * Quand un élément à l'intérieur prend le focus, tout ce bloc est ramené à l'écran (et pas seulement
+ * l'élément focalisé) : par exemple le grand chiffre du Top 10 à gauche de l'affiche.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.showWholeWhenFocused(): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    return bringIntoViewRequester(requester)
+        .onFocusChanged { if (it.hasFocus) scope.launch { requester.bringIntoView() } }
 }
 
 /** Vrai à l'intérieur d'une [FocusTile] qui a le focus. */
