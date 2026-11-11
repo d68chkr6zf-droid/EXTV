@@ -330,6 +330,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var startStep by remember { mutableIntStateOf(0) }
     var newStartPin by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
+    var keyDiagnostic by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     val context = LocalContext.current
@@ -369,6 +370,12 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             }.onFailure { updateText = "Vérification impossible, réessayez plus tard" }
             updating = false
         }
+    }
+
+    // Diagnostic : seul à l'écran, pour que les flèches ne déplacent pas le focus vers les réglages.
+    if (keyDiagnostic) {
+        KeyDiagnosticScreen(onClose = { keyDiagnostic = false })
+        return
     }
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
@@ -466,6 +473,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 info = "Les listes seront rechargées à la prochaine ouverture."
             }
             SettingRow("Changer de profil", "", onClick = onSwitchProfile)
+            SettingRow("Diagnostic de la navigation", "Touches et fluidité") { keyDiagnostic = true }
             info?.let { Text(it, color = C.Accent, modifier = Modifier.padding(top = 12.dp)) }
         }
     }
