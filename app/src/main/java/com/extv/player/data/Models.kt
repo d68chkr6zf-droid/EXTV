@@ -81,6 +81,8 @@ data class Movie(
     val trailer: String? = null,
     /** Date d'ajout sur le serveur (ms), pour « Récemment ajouté ». */
     val added: Long = 0,
+    /** Date de sortie (« 2026-10-22 ») si le serveur la donne. */
+    val releaseDate: String? = null,
 )
 
 data class Series(
