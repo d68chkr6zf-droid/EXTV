@@ -166,6 +166,8 @@ private suspend fun <T> IptvRepository.top10Of(
     year: (T) -> Int?,
     /** Date de sortie (« 2026-10-22 ») de chaque élément, quand on peut la connaître (films). */
     releaseDates: (suspend (List<T>) -> Map<T, String?>)? = null,
+    /** Note sur 10 donnée par le serveur (null si inconnue). */
+    rating: (T) -> Double? = { null },
 ): List<Pair<Int, T>> {
     val Top = com.extv.player.data.NetflixTop10
     val trendCats = serverTrendingCategories(type)
@@ -209,8 +211,11 @@ private suspend fun <T> IptvRepository.top10Of(
             com.extv.player.data.NetflixTop10.match(com.extv.player.data.NetflixTop10.Kind.FILMS, netflixNow, recent, name, year, recent)
         }
         // 3) Films récents (sortis cette année ou l'an dernier, date connue) des catégories Tendance de chaque plateforme.
+        // Dates et notes : année de sortie la plus récente d'abord, puis la meilleure note ; films notés moins de 5/10 écartés.
+        fun ranked(list: List<T>) = list.filter { (rating(it) ?: 10.0) >= 5.0 }
+            .sortedWith(compareByDescending<T> { dateOf(it)?.take(4) ?: "" }.thenByDescending { rating(it) ?: 6.0 }.thenByDescending { dateOf(it) ?: "" })
         val platformRecent = platforms.map { list ->
-            list.filter { dateOf(it)?.take(4)?.toIntOrNull()?.let { y -> y >= thisYear - 1 } == true }
+            ranked(list.filter { dateOf(it)?.take(4)?.toIntOrNull()?.let { y -> y >= thisYear - 1 } == true })
         }
         val lists = listOf(boxOffice, netflixRecent) + platformRecent
         val mixed = ArrayList<T>()
@@ -221,7 +226,7 @@ private suspend fun <T> IptvRepository.top10Of(
             }
         }
         // 4) Complété par les autres films de « VOD Récemment ajouté », sortie la plus récente d'abord.
-        mixed + recent.filter { it !in mixed }.sortedByDescending { dateOf(it) ?: "" }
+        mixed + ranked(recent.filter { it !in mixed })
     }
     // Films : uniquement la liste ci-dessus. Séries : Netflix puis chaque « Tendance sur … ».
     val sources = if (kind == com.extv.player.data.NetflixTop10.Kind.FILMS && cinema.isNotEmpty()) listOf(cinema) else listOf(netflix) + others
@@ -251,6 +256,7 @@ suspend fun IptvRepository.top10Movies(): List<Pair<Int, Movie>> {
         ContentType.MOVIE, com.extv.player.data.NetflixTop10.Kind.FILMS, { moviesIn(it) }, { it.name },
         { m -> m.year?.take(4)?.toIntOrNull() ?: com.extv.player.data.NetflixTop10.yearIn(m.name) },
         { list -> val d = com.extv.player.data.ReleaseDates.of(repo, list); list.associateWith { d[it.id] } },
+        { m -> m.rating?.replace(',', '.')?.toDoubleOrNull()?.takeIf { it > 0 && it <= 10 } },
     )
 }
 
