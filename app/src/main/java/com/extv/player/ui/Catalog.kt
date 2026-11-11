@@ -177,13 +177,20 @@ private suspend fun <T> IptvRepository.top10Of(
         if (entries.isEmpty()) emptyList() else Top.match(kind, entries, all, name, year, netflixTrending)
     } + netflixTrending
     val cinema = if (kind != com.extv.player.data.NetflixTop10.Kind.FILMS || entries.none { it.kind == com.extv.player.data.NetflixTop10.Kind.CINEMA }) emptyList() else {
-        // Films au cinéma : cherchés dans « Récemment ajouté » et les catégories de nouveautés du serveur,
-        // puis dans tout le catalogue seulement s'ils sont de cette année ou de l'an dernier (évite les homonymes anciens).
-        val recentCats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { isRecentCategory(it.name) && !App.instance.parental.isLocked(it) }
-        val recent = (itemsIn(Category.RECENT) + recentCats.flatMap { itemsIn(it.id) }).distinct()
-        val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-        val pool = (recent + all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
-        withContext(Dispatchers.Default) { Top.match(com.extv.player.data.NetflixTop10.Kind.CINEMA, entries, pool, name, year) }
+        // Films au cinéma : cherchés dans la catégorie « VOD Récemment ajouté » du serveur (là où le fournisseur met
+        // les sorties récentes). Sans cette catégorie : nouveautés du serveur, « Récemment ajouté » et films de l'année.
+        val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !App.instance.parental.isLocked(it) }
+        val vodRecent = cats.filter { it.name.normalized().let { n -> n.contains("recemment") || n.contains("recent") } }
+            .sortedBy { if (it.name.normalized().contains("vod")) 0 else 1 }.take(1)
+        val pool = if (vodRecent.isNotEmpty()) {
+            itemsIn(vodRecent[0].id)
+        } else {
+            val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            (cats.filter { isRecentCategory(it.name) }.flatMap { itemsIn(it.id) } + itemsIn(Category.RECENT) +
+                all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
+        }
+        // Rapprochement large dans cette catégorie (« Dune : Troisième partie » / « Dune 3 (2026) 4K »).
+        withContext(Dispatchers.Default) { com.extv.player.data.NetflixTop10.match(com.extv.player.data.NetflixTop10.Kind.CINEMA, entries, pool, name, year, pool) }
     }
     val sources = listOf(netflix, cinema) + others
     val picked = ArrayList<T>()
