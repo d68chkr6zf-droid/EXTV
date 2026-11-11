@@ -3,12 +3,18 @@ package com.extv.player.ui
 import com.extv.player.App
 import com.extv.player.data.Category
 import com.extv.player.data.ContentType
+import com.extv.player.data.FrenchTnt
 import com.extv.player.data.IptvRepository
 import com.extv.player.data.LiveChannel
 import com.extv.player.data.Movie
 import com.extv.player.data.Series
 import com.extv.player.data.lockedCategoryIds
 import com.extv.player.data.normalized
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
 
 /**
  * Construit les listes de catégories affichées (avec Tout, Favoris, Historique, Récemment ajouté
@@ -76,11 +82,39 @@ private suspend fun <T> IptvRepository.itemsOf(
     }
 }
 
-suspend fun IptvRepository.liveEntries(archiveOnly: Boolean = false): List<CategoryEntry> =
-    entriesOf(ContentType.LIVE, liveChannels(null).filter { !archiveOnly || it.hasArchive }, { it.categoryId }, { it.id }, false)
+suspend fun IptvRepository.liveEntries(archiveOnly: Boolean = false): List<CategoryEntry> {
+    val entries = entriesOf(ContentType.LIVE, liveChannels(null).filter { !archiveOnly || it.hasArchive }, { it.categoryId }, { it.id }, false)
+    if (archiveOnly) return entries
+    // « FR| TNT » juste sous Favoris.
+    val tnt = CategoryEntry(Category(Category.TNT, FrenchTnt.CATEGORY_NAME, ContentType.LIVE), tntChannels().size)
+    val at = entries.indexOfFirst { it.category.id == Category.FAVORITES } + 1
+    return entries.toMutableList().apply { add(at.coerceIn(0, size), tnt) }
+}
 
-suspend fun IptvRepository.liveIn(categoryId: String, archiveOnly: Boolean = false): List<LiveChannel> =
-    itemsOf(ContentType.LIVE, liveChannels(null).filter { !archiveOnly || it.hasArchive }, categoryId, { it.categoryId }, { it.id }, null)
+/** Chaînes de la TNT : celles de l'abonnement (hors catégories verrouillées), complétées par les flux officiels. */
+private suspend fun IptvRepository.tntChannels(): List<LiveChannel> {
+    val locked = lockedCategoryIds(ContentType.LIVE)
+    val all = runCatching { liveChannels(null) }.getOrDefault(emptyList()).filter { it.categoryId !in locked }
+    val names = runCatching { categories(ContentType.LIVE) }.getOrDefault(emptyList()).associate { it.id to it.name }
+    return withContext(Dispatchers.Default) { FrenchTnt.channels(all, names) }
+}
+
+suspend fun IptvRepository.liveIn(categoryId: String, archiveOnly: Boolean = false): List<LiveChannel> {
+    if (categoryId == Category.TNT) {
+        val list = tntChannels().filter { !archiveOnly || it.hasArchive }
+        // Directs Dailymotion : adresse signée demandée au moment d'afficher la catégorie.
+        return withContext(Dispatchers.IO) {
+            list.map { ch ->
+                if (FrenchTnt.isOwn(ch) && ch.streamUrl.startsWith("dailymotion:")) {
+                    async { FrenchTnt.resolve(ch.streamUrl)?.let { ch.copy(streamUrl = it) } }
+                } else {
+                    CompletableDeferred<LiveChannel?>(ch)
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
+    return itemsOf(ContentType.LIVE, liveChannels(null).filter { !archiveOnly || it.hasArchive }, categoryId, { it.categoryId }, { it.id }, null)
+}
 
 suspend fun IptvRepository.movieEntries(): List<CategoryEntry> =
     entriesOf(ContentType.MOVIE, movies(null), { it.categoryId }, { it.id }, true)

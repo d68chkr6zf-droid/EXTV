@@ -88,6 +88,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.extv.player.App
 import com.extv.player.data.ContentType
+import com.extv.player.data.FrenchTnt
 import com.extv.player.ui.C
 import com.extv.player.ui.ExtvTheme
 import com.extv.player.ui.FocusTile
@@ -431,10 +432,36 @@ class NativePlayerActivity : ComponentActivity() {
                 p.prepare()
                 return
             }
+            if (tryBackup()) return
             isBuffering = false
             errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
             if (live) handler.postDelayed(retryLive, 5000)
         }
+    }
+
+    /** Flux de l'abonnement en échec : on passe au direct officiel gratuit de la chaîne, s'il y en a un. */
+    private fun tryBackup(): Boolean {
+        val at = index
+        val item = items.getOrNull(at) ?: return false
+        val backup = item.backupUrl ?: return false
+        items[at] = item.copy(backupUrl = null)
+        isBuffering = true
+        errorText = null
+        Thread {
+            val url = FrenchTnt.resolve(backup)
+            handler.post {
+                if (isFinishing || isDestroyed || index != at) return@post
+                if (url != null) {
+                    items[at] = items[at].copy(url = url)
+                    playCurrent()
+                } else {
+                    isBuffering = false
+                    errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
+                    if (live) handler.postDelayed(retryLive, 5000)
+                }
+            }
+        }.start()
+        return true
     }
 
     // --- Lecture -----------------------------------------------------------------------------

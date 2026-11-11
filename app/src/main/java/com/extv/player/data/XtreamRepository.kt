@@ -256,6 +256,7 @@ class XtreamRepository(
     }
 
     override suspend fun epg(channel: LiveChannel, limit: Int): List<EpgProgram> {
+        if (FrenchTnt.isOwn(channel)) return emptyList()
         val now = System.currentTimeMillis()
         return parseListings(api("get_short_epg", "stream_id" to channel.id, "limit" to "$limit"))
             .map { it.first }.filter { it.end > now }.sortedBy { it.start }
@@ -263,6 +264,7 @@ class XtreamRepository(
     }
 
     override suspend fun catchup(channel: LiveChannel): List<EpgProgram> {
+        if (FrenchTnt.isOwn(channel)) return emptyList()
         val now = System.currentTimeMillis()
         val since = now - (channel.archiveDays.coerceAtLeast(1)) * DAY_MS
         return parseListings(api("get_simple_data_table", "stream_id" to channel.id))

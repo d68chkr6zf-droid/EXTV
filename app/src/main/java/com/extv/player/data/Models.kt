@@ -44,6 +44,7 @@ data class Category(val id: String, val name: String, val type: ContentType) {
         const val HISTORY = "__hist"
         const val RECENT = "__new"
         const val CONTINUE = "__cont"
+        const val TNT = "__tnt"
 
         fun isVirtual(id: String) = id.startsWith("__")
     }

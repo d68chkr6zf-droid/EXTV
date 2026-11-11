@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.extv.player.App
 import com.extv.player.data.ContentType
+import com.extv.player.data.FrenchTnt
 import com.extv.player.ui.C
 import com.extv.player.ui.FocusTile
 import com.extv.player.ui.ExtvTheme
@@ -301,6 +302,31 @@ class PlayerActivity : ComponentActivity() {
         showOverlay()
     }
 
+    /** Flux de l'abonnement en échec : on passe au direct officiel gratuit de la chaîne, s'il y en a un. */
+    private fun tryBackup(): Boolean {
+        val at = index
+        val item = items.getOrNull(at) ?: return false
+        val backup = item.backupUrl ?: return false
+        items[at] = item.copy(backupUrl = null)
+        isBuffering = true
+        errorText = null
+        Thread {
+            val url = FrenchTnt.resolve(backup)
+            handler.post {
+                if (isFinishing || isDestroyed || index != at) return@post
+                if (url != null) {
+                    items[at] = items[at].copy(url = url)
+                    playCurrent()
+                } else {
+                    isBuffering = false
+                    errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
+                    if (live) handler.postDelayed(retryLive, 5000)
+                }
+            }
+        }.start()
+        return true
+    }
+
     private fun onVlcEvent(e: MediaPlayer.Event) {
         when (e.type) {
             MediaPlayer.Event.Playing -> {
@@ -328,6 +354,7 @@ class PlayerActivity : ComponentActivity() {
             MediaPlayer.Event.LengthChanged -> lengthMs = items.getOrNull(index)?.durationMs ?: e.lengthChanged
             MediaPlayer.Event.EndReached -> handler.post { onEnd() }
             MediaPlayer.Event.EncounteredError -> {
+                if (tryBackup()) return
                 isBuffering = false
                 errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
                 if (live) handler.postDelayed(retryLive, 5000)
