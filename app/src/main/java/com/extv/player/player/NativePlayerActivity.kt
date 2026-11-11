@@ -413,7 +413,11 @@ class NativePlayerActivity : ComponentActivity() {
             }
             if (state == Player.STATE_BUFFERING && wasReady) stalls++
             handler.removeCallbacks(stuckLive)
-            if (state == Player.STATE_BUFFERING && live) handler.postDelayed(stuckLive, STUCK_LIVE_MS)
+            if (state == Player.STATE_BUFFERING && live) {
+                // Gel en cours de lecture et chaîne avec un secours : on bascule vite ; sinon on rouvre après 10 s.
+                val hasBackup = wasReady && items.getOrNull(index)?.backupUrl != null
+                handler.postDelayed(stuckLive, if (hasBackup) BACKUP_AFTER_MS else STUCK_LIVE_MS)
+            }
             if (state == Player.STATE_ENDED) handler.post { onEnd() }
         }
 
@@ -977,6 +981,8 @@ class NativePlayerActivity : ComponentActivity() {
         private const val NEXT_HIDE_MS = 40_000L
         private const val NEXT_PLAIN_COUNT = 2
         private const val NEXT_FADE_MS = 1500
+        /** Direct figé depuis ce délai (après avoir démarré) : bascule sur le flux de secours de la chaîne. */
+        private const val BACKUP_AFTER_MS = 4_000L
         private val SCALES = listOf(
             AspectRatioFrameLayout.RESIZE_MODE_FIT to "Automatique",
             AspectRatioFrameLayout.RESIZE_MODE_FILL to "Ajuster à l'écran",
