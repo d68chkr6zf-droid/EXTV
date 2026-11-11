@@ -90,6 +90,10 @@ class MainActivity : ComponentActivity() {
 
     private fun arrowDrop(event: KeyEvent): Boolean {
         if (arrowPending) return true
+        // Répétition pendant la première seconde : sur le Formuler, le service de la télécommande retient le
+        // relâchement de la touche jusqu'à 1 s ; Android croit la touche maintenue et répète l'appui, ce qui
+        // faisait sauter une ou deux cases. Une flèche vraiment maintenue répète au-delà de HOLD_MS.
+        if (event.repeatCount > 0 && event.eventTime - event.downTime < HOLD_MS) return true
         if (event.repeatCount > 0) {
             val now = SystemClock.uptimeMillis()
             if (now - lastRepeatAt < REPEAT_MS) return true
@@ -110,5 +114,6 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
         )
         const val REPEAT_MS = 90L
+        const val HOLD_MS = 1_200L
     }
 }
