@@ -56,7 +56,39 @@ object FrenchTnt {
     /** Flux officiel de secours, par identifiant de chaîne de l'abonnement. */
     private val backups = ConcurrentHashMap<String, String>()
 
-    fun backupFor(channelId: String): String? = backups[channelId]
+    /** Autre version de la même chaîne dans l'abonnement, pour toutes les chaînes (voir [indexAlternates]). */
+    @Volatile private var alternates: Map<String, String> = emptyMap()
+    @Volatile private var indexed: List<LiveChannel>? = null
+
+    fun backupFor(channelId: String): String? = backups[channelId] ?: alternates[channelId]
+
+    /**
+     * Pour chaque chaîne, une autre version de la même chaîne (même pays, nom identique hors qualité :
+     * « FR| France 2 FHD » / « FR| France 2 HD »), de préférence dans la même catégorie et pas en 4K.
+     * Calculé une fois par chargement du catalogue.
+     */
+    fun indexAlternates(all: List<LiveChannel>) {
+        if (indexed === all) return
+        val groups = HashMap<String, MutableList<LiveChannel>>()
+        all.forEach { ch ->
+            val k = key(ch.name)
+            if (k.length < 2) return@forEach
+            val country = MARKS.replace(Normalizer.normalize(ch.name.substringBefore('|', ""), Normalizer.Form.NFKD), "")
+                .lowercase().filter { it.isLetterOrDigit() }
+            groups.getOrPut("$country/$k") { mutableListOf() } += ch
+        }
+        val map = HashMap<String, String>()
+        groups.values.forEach { group ->
+            if (group.size < 2) return@forEach
+            group.forEach { ch ->
+                group.filter { it.streamUrl != ch.streamUrl }
+                    .maxByOrNull { (if (it.categoryId == ch.categoryId) 20 else 0) + score(it, "") }
+                    ?.let { map[ch.id] = it.streamUrl }
+            }
+        }
+        alternates = map
+        indexed = all
+    }
 
     private val QUALITY = setOf(
         "fhd", "hd", "sd", "uhd", "4k", "8k", "hevc", "h265", "h264", "x265", "1080", "1080p", "720", "720p", "576p",

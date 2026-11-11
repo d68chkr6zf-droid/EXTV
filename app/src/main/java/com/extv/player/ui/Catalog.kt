@@ -82,7 +82,14 @@ private suspend fun <T> IptvRepository.itemsOf(
     }
 }
 
+/** Prépare le flux de secours de chaque chaîne (autre version de la même chaîne dans l'abonnement). */
+private suspend fun IptvRepository.indexAlternates() {
+    val all = runCatching { liveChannels(null) }.getOrNull() ?: return
+    withContext(Dispatchers.Default) { FrenchTnt.indexAlternates(all) }
+}
+
 suspend fun IptvRepository.liveEntries(archiveOnly: Boolean = false): List<CategoryEntry> {
+    indexAlternates()
     val entries = entriesOf(ContentType.LIVE, liveChannels(null).filter { !archiveOnly || it.hasArchive }, { it.categoryId }, { it.id }, false)
     if (archiveOnly) return entries
     // « FR| TNT » juste sous Favoris.
@@ -100,6 +107,7 @@ private suspend fun IptvRepository.tntChannels(): List<LiveChannel> {
 }
 
 suspend fun IptvRepository.liveIn(categoryId: String, archiveOnly: Boolean = false): List<LiveChannel> {
+    indexAlternates()
     if (categoryId == Category.TNT) {
         val list = tntChannels().filter { !archiveOnly || it.hasArchive }
         // Directs Dailymotion : adresse signée demandée au moment d'afficher la catégorie.
