@@ -1,0 +1,28 @@
+name: Diagnostic navigation
+
+# Lit les rapports de diagnostic envoyés par l'appli (Paramètres > Diagnostic, envoi automatique) sur ntfy.sh.
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Depuis (ex. 12h, all)"
+        default: "24h"
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rapports reçus
+        run: |
+          curl -sS "https://ntfy.sh/extv-diag-dc5e04a3609e/json?poll=1&since=${{ inputs.since }}" \
+            | python3 -c "
+          import json, sys
+          for line in sys.stdin:
+              m = json.loads(line)
+              if m.get('event') != 'message':
+                  continue
+              print('=' * 20, m.get('title'), m.get('time'))
+              print(m.get('message', ''))
+              if m.get('attachment'):
+                  print('ATTACHMENT', m['attachment'].get('url'))
+          "

@@ -233,7 +233,10 @@ fun FocusTile(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged {
                 focused = it.isFocused
-                if (it.isFocused) onFocus?.invoke()
+                if (it.isFocused) {
+                    KeyLog.focusGained()
+                    onFocus?.invoke()
+                }
             }
             .clip(shape)
             .background(

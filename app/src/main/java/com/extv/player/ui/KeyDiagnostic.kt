@@ -71,9 +71,99 @@ object KeyLog {
         })
     }
 
-    /** Appelé par MainActivity pour chaque touche, avant tout traitement. */
-    fun record(e: KeyEvent) {
+    // --- Rapport envoyé automatiquement (accord de l'abonné, 11/11/2026) ----------------------------
+    // Touches reçues, déplacements du focus et événements de pointeur, envoyés à ntfy.sh pour comprendre
+    // les menus qui « sautent » sur certains boîtiers. Aucun identifiant ni mot de passe n'y figure.
+    private const val REPORT_URL = "https://ntfy.sh/extv-diag-dc5e04a3609e"
+    private const val REPORT_EVERY = 25 // flèches par rapport
+    private const val MAX_REPORTS = 6 // par lancement
+    private val events = ArrayList<String>()
+    private var eventsStart = 0L
+    private var arrowsInReport = 0
+    private var reports = 0
+    private var motionLogged = 0
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val sendNow = Runnable { flush() }
+
+    private fun event(line: String) {
+        if (reports >= MAX_REPORTS) return
+        val now = SystemClock.uptimeMillis()
+        if (events.isEmpty()) eventsStart = now
+        if (events.size < 400) events += "${now - eventsStart} $line"
+    }
+
+    /** Une tuile de l'appli vient de prendre le focus (appelé par FocusTile). */
+    fun focusGained() = event("FOCUS")
+
+    fun motion(e: android.view.MotionEvent) {
+        if (motionLogged > 60) return
+        motionLogged++
+        event("MOTION a=${e.actionMasked} src=0x${Integer.toHexString(e.source)} dev=${e.deviceId} x=${"%.2f".format(e.x)} y=${"%.2f".format(e.y)} hatX=${e.getAxisValue(android.view.MotionEvent.AXIS_HAT_X)} hatY=${e.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y)}")
+    }
+
+    private fun keyEvent(e: KeyEvent, dropped: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        event(
+            "${KeyEvent.keyCodeToString(e.keyCode).removePrefix("KEYCODE_")} ${if (e.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"}" +
+                " rep=${e.repeatCount} retard=${(now - e.eventTime).coerceAtLeast(0)} dev=${e.deviceId} src=0x${Integer.toHexString(e.source)}" +
+                " scan=${e.scanCode} flags=0x${Integer.toHexString(e.flags)}" + if (dropped) " IGNORE" else "",
+        )
+        val arrow = e.keyCode in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT
+        if (arrow && e.action == KeyEvent.ACTION_DOWN) arrowsInReport++
+        handler.removeCallbacks(sendNow)
+        // Envoi après 2 s sans touche, une fois assez de flèches notées (la série d'appuis est complète).
+        if (arrowsInReport >= REPORT_EVERY) handler.postDelayed(sendNow, 2_000)
+    }
+
+    private fun flush() {
+        if (events.isEmpty() || reports >= MAX_REPORTS) return
+        reports++
+        val body = buildString {
+            appendLine("EXTV ${com.extv.player.BuildConfig.VERSION_NAME} · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · rapport $reports")
+            appendLine(header())
+            appendLine("appuis=$downs en retard=$lateDowns pire=${worstLateMs}ms images=${frames[0]} >34ms=${frames[1]} >100ms=${frames[2]}")
+            events.forEach { appendLine(it) }
+        }
+        events.clear()
+        arrowsInReport = 0
+        Thread {
+            // ntfy.sh limite un message à 4 Ko : le rapport part en plusieurs morceaux si besoin.
+            body.chunked(3_800).forEachIndexed { i, part ->
+                runCatching {
+                    val c = java.net.URL(REPORT_URL).openConnection() as java.net.HttpURLConnection
+                    c.requestMethod = "POST"
+                    c.doOutput = true
+                    c.connectTimeout = 8000
+                    c.readTimeout = 8000
+                    c.setRequestProperty("Title", "EXTV diag ${Build.MODEL} #$reports.${i + 1}")
+                    c.outputStream.use { it.write(part.toByteArray()) }
+                    c.inputStream.close()
+                    c.disconnect()
+                }
+            }
+        }.start()
+    }
+
+    /** Écran, accessibilité et périphériques d'entrée (une fois par rapport). */
+    private fun header(): String = runCatching {
+        val app = com.extv.player.App.instance
+        val m = app.resources.displayMetrics
+        @Suppress("DEPRECATION")
+        val mode = (app.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay.mode
+        val am = app.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+        val services = am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .joinToString(",") { it.id }
+        val anim = android.provider.Settings.Global.getFloat(app.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        val devices = InputDevice.getDeviceIds().toList().mapNotNull { InputDevice.getDevice(it) }
+            .joinToString(" | ") { "${it.id}:${it.name} v${it.vendorId}/p${it.productId} src=0x${Integer.toHexString(it.sources)} kb=${it.keyboardType}" }
+        "écran ${m.widthPixels}x${m.heightPixels} ${m.densityDpi}dpi police=${app.resources.configuration.fontScale} sortie ${mode.physicalWidth}x${mode.physicalHeight}@${mode.refreshRate} " +
+            "anim=$anim access=${am.isEnabled} touch=${am.isTouchExplorationEnabled} services=[$services] tactile=${app.resources.configuration.touchscreen}\nentrées: $devices"
+    }.getOrDefault("?")
+
+    /** Appelé par MainActivity pour chaque touche, avant tout traitement ([dropped] : ignorée par le filtre des flèches). */
+    fun record(e: KeyEvent, dropped: Boolean = false) {
         if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return
+        keyEvent(e, dropped)
         val now = SystemClock.uptimeMillis()
         val gap = if (e.action == KeyEvent.ACTION_DOWN) {
             val g = if (lastDownAt == 0L) 0 else now - lastDownAt
