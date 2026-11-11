@@ -59,7 +59,7 @@ object NetflixTop10 {
     private val mutex = Mutex()
     @Volatile private var memory: List<Entry>? = null
 
-    private val cacheFile get() = File(App.instance.filesDir, "top10_v2.json")
+    private val cacheFile get() = File(App.instance.filesDir, "top10_v3.json")
 
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     @Volatile private var job: kotlinx.coroutines.Deferred<List<Entry>>? = null
