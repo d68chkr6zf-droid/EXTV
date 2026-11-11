@@ -285,20 +285,41 @@ class NativePlayerActivity : ComponentActivity() {
             handler.post { matchRefreshRate(format.frameRate) }
             return@VideoFrameMetadataListener
         }
-        // Débit d'images non indiqué dans le flux (fréquent en direct) : on le mesure sur 60 images.
-        if (firstPtsUs < 0 || ptsUs <= lastPtsUs) {
+        // Débit d'images non indiqué dans le flux (fréquent en direct) : on le mesure par tranches de
+        // 150 images, en continu. Une chaîne peut changer de cadence en cours de route (pub en 25 img/s,
+        // émission en 50 img/s, comme sur LCI) : l'écran suit alors la nouvelle cadence.
+        if (firstPtsUs < 0 || ptsUs <= lastPtsUs || ptsUs - lastPtsUs > 200_000L) {
             firstPtsUs = ptsUs
             frameCount = 0
         } else {
             frameCount++
         }
         lastPtsUs = ptsUs
-        if (frameCount >= 60 && ptsUs > firstPtsUs) {
-            rateMatched = true
-            val fps = frameCount * 1_000_000f / (ptsUs - firstPtsUs)
+        if (frameCount >= 150 && ptsUs > firstPtsUs) {
+            val fps = standardFps(frameCount * 1_000_000f / (ptsUs - firstPtsUs))
+            firstPtsUs = ptsUs
+            frameCount = 0
+            if (Math.abs(fps - measuredFps) < 0.5f) return@VideoFrameMetadataListener
+            // Même cadence mesurée deux fois de suite avant de changer l'écran (évite les va-et-vient).
+            if (Math.abs(fps - candidateFps) >= 0.5f && measuredFps > 0f) {
+                candidateFps = fps
+                return@VideoFrameMetadataListener
+            }
+            candidateFps = 0f
             measuredFps = fps
             handler.post { matchRefreshRate(fps) }
         }
+    }
+    @Volatile private var candidateFps = 0f
+
+    /**
+     * La mesure en direct est imprécise (images perdues, à-coups du réseau : 48,4 au lieu de 50).
+     * On la ramène à la cadence de diffusion la plus proche, pour pouvoir caler l'écran dessus.
+     */
+    private fun standardFps(measured: Float): Float {
+        val standard = floatArrayOf(23.976f, 24f, 25f, 29.97f, 30f, 50f, 59.94f, 60f)
+        val nearest = standard.minByOrNull { Math.abs(it - measured) } ?: return measured
+        return if (Math.abs(nearest - measured) <= nearest * 0.06f) nearest else measured
     }
 
     // Infos techniques affichées sous le titre (résolution, images/s, fréquence de l'écran, images perdues).
@@ -344,6 +365,7 @@ class NativePlayerActivity : ComponentActivity() {
 
     private fun resetRateMatch() {
         measuredFps = 0f
+        candidateFps = 0f
         droppedFrames = 0
         stalls = 0
         reconnects = 0
