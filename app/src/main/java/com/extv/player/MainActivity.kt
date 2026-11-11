@@ -39,18 +39,30 @@ class MainActivity : ComponentActivity() {
     private val arrowShown = Choreographer.FrameCallback { arrowPending = false }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        com.extv.player.ui.KeyLog.record(event)
+        val drop = event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS && arrowDrop(event)
+        com.extv.player.ui.KeyLog.record(event, drop)
+        if (drop) return true
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS) {
-            if (arrowPending) return true
-            if (event.repeatCount > 0) {
-                val now = SystemClock.uptimeMillis()
-                if (now - lastRepeatAt < REPEAT_MS) return true
-                lastRepeatAt = now
-            }
             arrowPending = true
             Choreographer.getInstance().postFrameCallback(arrowShown)
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun arrowDrop(event: KeyEvent): Boolean {
+        if (arrowPending) return true
+        if (event.repeatCount > 0) {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastRepeatAt < REPEAT_MS) return true
+            lastRepeatAt = now
+        }
+        return false
+    }
+
+    /** Événements « souris / pavé / manette » de la télécommande : notés pour le rapport de diagnostic. */
+    override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        com.extv.player.ui.KeyLog.motion(ev)
+        return super.dispatchGenericMotionEvent(ev)
     }
 
     private companion object {
