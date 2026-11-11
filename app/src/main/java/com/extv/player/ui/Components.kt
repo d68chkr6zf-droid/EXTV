@@ -121,6 +121,7 @@ private val colors: ColorScheme = darkColorScheme(
     onBackground = C.Text,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExtvTheme(background: Boolean = true, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colors) {
