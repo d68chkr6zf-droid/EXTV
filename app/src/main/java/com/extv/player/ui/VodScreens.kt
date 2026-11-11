@@ -151,8 +151,9 @@ private fun <T> CatalogScreen(
     // Top 10 Netflix : chargé à part (téléchargement la première fois), la rangée apparaît quand il est prêt.
     val top10 = rememberLoader(Unit) {
         try {
-            // On attend le Top 10 quelques secondes au plus pour qu'il soit tout en haut dès l'ouverture.
-            kotlinx.coroutines.withTimeoutOrNull(8_000) { loadTop10() } ?: emptyList()
+            // Attendu avant d'afficher l'accueil pour qu'il soit tout en haut dès l'ouverture
+            // (le téléchargement du classement est limité à quelques secondes, voir Catalog.kt).
+            loadTop10()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -331,16 +332,7 @@ private fun <T> CatalogScreen(
                                     Column(Modifier.padding(top = 10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 6.dp)) {
                                             Text(row.title, fontSize = if (wide) 18.sp else 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                            if (row.id == TOP10) {
-                                                Text(
-                                                    "NETFLIX",
-                                                    Modifier.padding(start = 10.dp).background(C.Velvet, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    letterSpacing = 1.sp,
-                                                )
-                                                if (wide) Text("  · titres trouvés dans votre abonnement", fontSize = 12.sp, color = C.TextDim, maxLines = 1)
-                                            } else {
+                                            if (row.id != TOP10) {
                                                 Text("  · ${row.total} $unit", fontSize = 12.sp, color = C.TextDim, maxLines = 1)
                                             }
                                         }

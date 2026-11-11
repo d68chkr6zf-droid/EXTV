@@ -296,7 +296,8 @@ object NetflixTop10 {
             titleKeys(name(item)).forEach { k -> byKey.getOrPut(k) { ArrayList(1) } += item }
         }
         val used = HashSet<T>()
-        return entries.filter { it.kind == kind }.sortedBy { it.rank }.mapNotNull { e ->
+        // Un même titre peut revenir plusieurs fois (une ligne par saison) : on garde son meilleur rang.
+        return entries.filter { it.kind == kind }.sortedBy { it.rank }.distinctBy { titleKey(it.title) }.mapNotNull { e ->
             // Titres entiers d'abord, puis leurs parties.
             val names = listOf(e.title) + e.altTitles
             val keys = (names.map(::titleKey) + names.flatMap(::titleKeys)).filter { it.isNotEmpty() }.distinct()
