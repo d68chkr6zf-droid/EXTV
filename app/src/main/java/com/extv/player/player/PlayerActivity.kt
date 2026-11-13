@@ -210,7 +210,16 @@ class PlayerActivity : ComponentActivity() {
             "--clock-jitter=0",
             "--clock-synchro=0",
             "-v",
+            // Sous-titres : taille et fond réglés dans les Paramètres ; couleurs d'origine de la piste gardées.
+            "--sub-text-scale=${(100 * SdhSubtitles.SIZES[store.subtitleSize.coerceIn(0, 2)].first).toInt()}",
+            "--freetype-bold",
+            "--freetype-outline-thickness=${if (store.subtitleBackground) 0 else 4}",
+            "--freetype-background-opacity=${if (store.subtitleBackground) 192 else 0}",
+            "--freetype-background-color=0",
         )
+        if (store.sdhMode) {
+            options += "--sub-language=fr,fre,fra,french,français"
+        }
         libVlc = LibVLC(this, options)
         mediaPlayer = MediaPlayer(libVlc)
         mediaPlayer.setEventListener { onVlcEvent(it) }
@@ -274,6 +283,7 @@ class PlayerActivity : ComponentActivity() {
         lastBufferPercent = -1f
         if (live) handler.postDelayed(watchLive, 1_000)
         frenchChosen = false
+        subtitlesChosen = false
         errorText = null
         baseOffset = if (item.replayUrlAt != null) offset else 0L
         timeMs = baseOffset
@@ -285,6 +295,8 @@ class PlayerActivity : ComponentActivity() {
         val media = Media(libVlc, Uri.parse(com.extv.player.data.SafeDns.urlForSystemResolver(url)))
         media.setHWDecoderEnabled(store.hwDecoding, false)
         media.addOption(":http-user-agent=${store.userAgent}")
+        // Télétexte des chaînes françaises : page 888 = sous-titres sourds et malentendants (en couleurs).
+        if (store.sdhMode) media.addOption(":vbi-page=888")
         if (store.deinterlace) {
             // Flux entrelacés (1080i) : on reconstitue 50 images/s à partir des 2 trames de chaque image.
             // Le décodage matériel doit alors rendre les images à VLC au lieu de les afficher directement.
@@ -397,6 +409,20 @@ class PlayerActivity : ComponentActivity() {
             mediaPlayer.setAudioTrack(tracks.first().id)
         }
         if (mediaPlayer.volume <= 0) mediaPlayer.setVolume(100)
+        chooseSubtitles()
+    }
+
+    /** Sous-titres choisis pour la vidéo en cours (automatiquement ou à la main dans le menu Info). */
+    private var subtitlesChosen = false
+
+    /** Option Malentendants : piste SME/malentendants de préférence, sinon française, une fois par vidéo. */
+    private fun chooseSubtitles() {
+        if (subtitlesChosen || !store.sdhMode) return
+        val tracks = mediaPlayer.spuTracks?.filter { it.id >= 0 }.orEmpty()
+        val best = tracks.maxByOrNull { SdhSubtitles.score(it.name, null) } ?: return
+        if (SdhSubtitles.score(best.name, null) < 0) return
+        subtitlesChosen = true
+        if (mediaPlayer.spuTrack != best.id) mediaPlayer.setSpuTrack(best.id)
     }
 
     /**
@@ -801,6 +827,7 @@ class PlayerActivity : ComponentActivity() {
                     MenuItem((if (t.id == currentSpu) "●  " else "○  ") + t.name) {
                         mediaPlayer.setSpuTrack(t.id)
                         currentSpu = t.id
+                        subtitlesChosen = true
                     }
                 }
             }

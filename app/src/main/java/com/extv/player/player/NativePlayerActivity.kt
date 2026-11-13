@@ -90,6 +90,13 @@ import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import com.extv.player.App
 import com.extv.player.data.ContentType
 import com.extv.player.data.FrenchTnt
@@ -110,6 +117,9 @@ class NativePlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
+    private lateinit var subtitleView: SubtitleView
+    /** Sous-titres déjà choisis pour la vidéo en cours (automatiquement ou à la main). */
+    private var subtitlesChosen = false
 
     private var items: MutableList<PlayItem> = mutableListOf()
     private var live = false
@@ -430,6 +440,25 @@ class NativePlayerActivity : ComponentActivity() {
         val root = FrameLayout(this)
         root.setBackgroundColor(android.graphics.Color.BLACK)
         root.addView(playerView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Sous-titres dessinés par EXTV (taille, fond et code couleur malentendants).
+        playerView.subtitleView?.visibility = android.view.View.GONE
+        subtitleView = SubtitleView(this).apply {
+            val bg = store.subtitleBackground
+            setStyle(
+                CaptionStyleCompat(
+                    android.graphics.Color.WHITE,
+                    if (bg) 0xC0000000.toInt() else android.graphics.Color.TRANSPARENT,
+                    android.graphics.Color.TRANSPARENT,
+                    if (bg) CaptionStyleCompat.EDGE_TYPE_NONE else CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    android.graphics.Color.BLACK,
+                    android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD),
+                ),
+            )
+            setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * SdhSubtitles.SIZES[store.subtitleSize.coerceIn(0, 2)].first)
+            setApplyEmbeddedStyles(true)
+            setApplyEmbeddedFontSizes(false)
+        }
+        root.addView(subtitleView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(
             ComposeView(this).apply { setContent { ExtvTheme(background = false) { Overlay() } } },
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
@@ -498,6 +527,9 @@ class NativePlayerActivity : ComponentActivity() {
         val extractors = DefaultExtractorsFactory()
             // Chaînes TV dont les images clés ne sont pas marquées « IDR » : démarrage et raccord plus rapides.
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)
+            // Sous-titres DVB des chaînes : décodés dès la lecture du flux (sinon le lecteur s'arrête en les activant).
+            .setTextTrackTranscodingEnabled(true)
+            .setSubtitleParserFactory(DefaultSubtitleParserFactory())
         liveSourceFactory = ProgressiveMediaSource.Factory(
             LiveReconnectDataSource.Factory(liveHttp) { handler.post { reconnects++ } },
             extractors,
@@ -546,6 +578,17 @@ class NativePlayerActivity : ComponentActivity() {
 
         override fun onTracksChanged(tracks: Tracks) {
             tracksVersion++
+            autoSelectSubtitles(tracks)
+        }
+
+        override fun onCues(cueGroup: CueGroup) {
+            val sdh = store.sdhMode
+            subtitleView.setCues(
+                cueGroup.cues.map { cue ->
+                    val text = cue.text
+                    if (!sdh || text == null) cue else cue.buildUpon().setText(SdhSubtitles.colorize(text)).build()
+                },
+            )
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -607,6 +650,8 @@ class NativePlayerActivity : ComponentActivity() {
         val p = player ?: return
         val item = items.getOrNull(index) ?: return
         resetRateMatch()
+        subtitlesChosen = false
+        subtitleView.setCues(emptyList())
         errorText = null
         baseOffset = if (item.replayUrlAt != null) offset else 0L
         timeMs = baseOffset
@@ -759,8 +804,10 @@ class NativePlayerActivity : ComponentActivity() {
                 if (!group.isTrackSupported(i)) continue
                 n++
                 val f = group.getTrackFormat(i)
-                val label = listOfNotNull(f.label, f.language?.uppercase()).distinct().joinToString(" · ").ifEmpty { "Piste $n" }
+                val kind = if (type == MC.TRACK_TYPE_TEXT) subtitleKind(f) else null
+                val label = listOfNotNull(f.label, f.language?.uppercase(), kind).distinct().joinToString(" · ").ifEmpty { "Piste $n" }
                 result += TrackChoice(label, group.isTrackSelected(i)) {
+                    if (type == MC.TRACK_TYPE_TEXT) subtitlesChosen = true
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
@@ -771,7 +818,55 @@ class NativePlayerActivity : ComponentActivity() {
         return result
     }
 
+    /** Format d'une piste de sous-titres, affiché dans le menu Info (utile pour savoir ce que le flux fournit). */
+    private fun subtitleKind(f: Format): String? {
+        val mime = if (f.sampleMimeType == MimeTypes.APPLICATION_MEDIA3_CUES) f.codecs ?: f.sampleMimeType else f.sampleMimeType
+        return when (mime) {
+            MimeTypes.APPLICATION_SUBRIP -> "SRT"
+            MimeTypes.TEXT_SSA -> "ASS"
+            MimeTypes.TEXT_VTT, MimeTypes.APPLICATION_MP4VTT -> "WebVTT"
+            MimeTypes.APPLICATION_DVBSUBS -> "DVB"
+            MimeTypes.APPLICATION_PGS -> "PGS"
+            MimeTypes.APPLICATION_TTML -> "TTML"
+            MimeTypes.APPLICATION_TX3G -> "MP4"
+            MimeTypes.APPLICATION_CEA608, MimeTypes.APPLICATION_CEA708, MimeTypes.APPLICATION_MP4CEA608 -> "CC"
+            else -> null
+        }
+    }
+
+    /**
+     * Option Malentendants : active d'office la meilleure piste de sous-titres (SME/malentendants,
+     * puis français), une fois par vidéo pour respecter un choix fait ensuite dans le menu Info.
+     */
+    private fun autoSelectSubtitles(tracks: Tracks) {
+        if (subtitlesChosen || !store.sdhMode) return
+        val p = player ?: return
+        var best: Pair<Tracks.Group, Int>? = null
+        var bestScore = -1
+        for (group in tracks.groups) {
+            if (group.type != MC.TRACK_TYPE_TEXT) continue
+            for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
+                val f = group.getTrackFormat(i)
+                val s = SdhSubtitles.score(
+                    f.label, f.language,
+                    forced = f.selectionFlags and MC.SELECTION_FLAG_FORCED != 0,
+                    describesSound = f.roleFlags and MC.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0,
+                )
+                if (s > bestScore) { bestScore = s; best = group to i }
+            }
+        }
+        val (group, i) = best ?: return
+        subtitlesChosen = true
+        if (group.isTrackSelected(i)) return
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, false)
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+            .build()
+    }
+
     private fun disableSubtitles() {
+        subtitlesChosen = true
         val p = player ?: return
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(MC.TRACK_TYPE_TEXT, true)

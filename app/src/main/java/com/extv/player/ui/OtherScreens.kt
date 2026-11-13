@@ -439,6 +439,20 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 changed()
             }
 
+            Section("Sous-titres")
+            SettingRow("Malentendants (sous-titres + code couleur)", if (store.sdhMode) "Activé" else "Désactivé") {
+                store.sdhMode = !store.sdhMode
+                changed()
+            }
+            SettingRow("Taille des sous-titres", com.extv.player.player.SdhSubtitles.SIZES[store.subtitleSize.coerceIn(0, 2)].second) {
+                store.subtitleSize = (store.subtitleSize + 1).mod(com.extv.player.player.SdhSubtitles.SIZES.size)
+                changed()
+            }
+            SettingRow("Fond des sous-titres", if (store.subtitleBackground) "Bandeau noir" else "Contour noir") {
+                store.subtitleBackground = !store.subtitleBackground
+                changed()
+            }
+
             Section("Verrouillage de l'application")
             SettingRow("Code au démarrage", if (store.startLock) "Activé" else "Désactivé") {
                 if (store.startLock) {

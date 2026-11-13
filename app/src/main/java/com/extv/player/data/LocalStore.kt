@@ -183,6 +183,21 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getString("aout", "android_audiotrack") ?: "android_audiotrack"
         set(value) = prefs.edit().putString("aout", value).apply()
 
+    /** Malentendants : sous-titres activés d'office (piste SME/française de préférence) + code couleur. */
+    var sdhMode: Boolean
+        get() = prefs.getBoolean("sdh", false)
+        set(value) = prefs.edit().putBoolean("sdh", value).apply()
+
+    /** Taille des sous-titres : index dans SdhSubtitles.SIZES. */
+    var subtitleSize: Int
+        get() = prefs.getInt("subSize", 0)
+        set(value) = prefs.edit().putInt("subSize", value).apply()
+
+    /** Sous-titres sur un bandeau noir (sinon texte contouré de noir). */
+    var subtitleBackground: Boolean
+        get() = prefs.getBoolean("subBg", true)
+        set(value) = prefs.edit().putBoolean("subBg", value).apply()
+
     /** Extension des flux live Xtream : "ts" ou "m3u8". */
     var liveFormat: String
         get() = prefs.getString("liveFormat", "ts") ?: "ts"
