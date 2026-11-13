@@ -192,7 +192,6 @@ class NativePlayerActivity : ComponentActivity() {
      */
     private var lastLoadAt = 0L
     private var lastBuffered = 0L
-    private var stallStartedAt = 0L
     private val stuckLive = object : Runnable {
         override fun run() {
             val p = player ?: return
@@ -204,15 +203,6 @@ class NativePlayerActivity : ComponentActivity() {
                 lastLoadAt = now
             }
             val silent = now - lastLoadAt
-            if (seamlessPending()) {
-                handler.postDelayed(this, 1_000)
-                return
-            }
-            if (now - stallStartedAt > LONG_STALL_MS && canStepDown()) {
-                recentStalls.addLast(now) // deuxième arrêt compté : bascule immédiate
-                onLiveStall()
-                return
-            }
             val hasBackup = wasReady && items.getOrNull(index)?.backupUrl != null
             if ((hasBackup && silent > BACKUP_AFTER_MS) || silent > STUCK_LIVE_MS) {
                 if (!tryBackup()) playCurrent()
@@ -262,62 +252,8 @@ class NativePlayerActivity : ComponentActivity() {
         if (fullUrl == null) fullUrl = item.url
         lighterSince = now
         items[index] = item.copy(url = lighter, backupUrl = item.url)
-        // Version plus légère : l'image repart dès 1,5 s de réserve au lieu de 8 s.
-        handler.post { playCurrent(fastStartMs = SWITCH_START_MS) }
+        handler.post { playCurrent() }
     }
-
-    // --- Changement de version sans coupure ------------------------------------------------------------
-    // La connexion en cours est fermée proprement (l'abonnement n'en permet qu'une), la réserve déjà reçue
-    // continue de jouer pendant que la nouvelle version se connecte, puis le lecteur enchaîne dessus.
-    private var seamlessUntil = 0L
-    private val aheadSamples = ArrayDeque<Pair<Long, Long>>()
-
-    private fun seamlessPending() = SystemClock.elapsedRealtime() < seamlessUntil
-
-    private fun switchSeamless(newUrl: String): Boolean {
-        val p = player ?: return false
-        val factory = liveSourceFactory ?: return false
-        val item = items.getOrNull(index) ?: return false
-        if (!live || seamlessPending() || p.mediaItemCount != 1) return false
-        if (item.url.contains(".m3u8", true) || newUrl.contains(".m3u8", true)) return false
-        p.addMediaSource(factory.createMediaSource(MediaItem.fromUri(newUrl)))
-        LiveReconnectDataSource.finish(item.url)
-        items[index] = item.copy(url = newUrl, backupUrl = item.url)
-        fastStart?.fastStartUs = SWITCH_START_MS * 1000
-        seamlessUntil = SystemClock.elapsedRealtime() + SEAMLESS_GRACE_MS
-        aheadSamples.clear()
-        return true
-    }
-
-    /** Réserve qui fond (débit sous celui de la chaîne) : on passe plus léger avant la coupure. */
-    private fun watchAhead() {
-        val p = player ?: return
-        if (!live || p.playbackState != Player.STATE_READY || !p.playWhenReady || seamlessPending()) {
-            aheadSamples.clear()
-            return
-        }
-        val now = SystemClock.elapsedRealtime()
-        val ahead = (p.bufferedPosition - p.currentPosition).coerceAtLeast(0L)
-        aheadSamples.addLast(now to ahead)
-        while (aheadSamples.size > 1 && now - aheadSamples.first().first > AHEAD_WINDOW_MS) aheadSamples.removeFirst()
-        val oldest = aheadSamples.first()
-        if (now - oldest.first < AHEAD_WINDOW_MS / 2) return
-        if (ahead > LOW_AHEAD_MS || oldest.second - ahead < AHEAD_DROP_MS) return
-        val item = items.getOrNull(index) ?: return
-        val lighter = com.extv.player.data.FrenchTnt.lighterFor(item.url) ?: return
-        syncAdapt()
-        if (fullUrl == null && lighterSince != 0L) upgradeAfterMs = (upgradeAfterMs * 2).coerceAtMost(60 * 60_000L)
-        if (fullUrl == null) fullUrl = item.url
-        lighterSince = now
-        lastStallAt = now
-        recentStalls.clear()
-        switchSeamless(lighter)
-    }
-
-    /** Chaîne qui a déjà joué et reste bloquée plus de [LONG_STALL_MS] : on passe tout de suite plus léger. */
-    private fun canStepDown(): Boolean =
-        live && wasReady && items.getOrNull(index)?.let { com.extv.player.data.FrenchTnt.lighterFor(it.url) } != null
-
 
     private val adaptCheck = object : Runnable {
         override fun run() {
@@ -329,16 +265,10 @@ class NativePlayerActivity : ComponentActivity() {
             val now = SystemClock.elapsedRealtime()
             if (now - lighterSince < upgradeAfterMs || now - lastStallAt < upgradeAfterMs) return
             val item = items.getOrNull(index) ?: return
-            if (item.url == full) {
-                fullUrl = null
-                return
-            }
-            val ahead = p.bufferedPosition - p.currentPosition
-            if (ahead >= UPGRADE_AHEAD_MS) {
-                fullUrl = null
-                switchSeamless(full)
-            }
-            // Réserve trop courte pour changer sans coupure : nouvel essai au prochain contrôle (30 s).
+            fullUrl = null
+            if (item.url == full) return
+            items[index] = item.copy(url = full, backupUrl = item.url)
+            playCurrent()
         }
     }
     private val tick = object : Runnable {
@@ -350,7 +280,6 @@ class NativePlayerActivity : ComponentActivity() {
                 lengthMs = replay ?: if (d == MC.TIME_UNSET || d < 0) 0L else d
             }
             if (overlayVisible) refreshTechInfo()
-            watchAhead()
             handler.postDelayed(this, 500)
         }
     }
@@ -562,7 +491,6 @@ class NativePlayerActivity : ComponentActivity() {
     }
 
     private var liveSourceFactory: ProgressiveMediaSource.Factory? = null
-    private var fastStart: FastStartLoadControl? = null
 
     private fun buildPlayer(): ExoPlayer {
         // La « mémoire tampon réseau » des paramètres sert aussi au lecteur natif.
@@ -571,12 +499,10 @@ class NativePlayerActivity : ComponentActivity() {
         val maxBuffer = maxOf(minBuffer * 2, 50_000)
         val startBuffer = minOf(8_000, minBuffer)
         val rebuffer = minOf(maxOf(caching / 2, 5_000), minBuffer)
-        val loadControl = FastStartLoadControl(
-            DefaultLoadControl.Builder()
-                .setBufferDurationsMs(minBuffer, maxBuffer, startBuffer, rebuffer)
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .build(),
-        ).also { fastStart = it }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(minBuffer, maxBuffer, startBuffer, rebuffer)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
 
         // OkHttp + DNS chiffré : le flux reste joignable quand la box bloque le serveur par son DNS.
         val http = OkHttpDataSource.Factory(
@@ -632,32 +558,18 @@ class NativePlayerActivity : ComponentActivity() {
             if (state == Player.STATE_READY) {
                 errorText = null
                 wasReady = true
-                fastStart?.fastStartUs = 0L
             }
-            if (state == Player.STATE_BUFFERING && wasReady && !seamlessPending()) {
+            if (state == Player.STATE_BUFFERING && wasReady) {
                 stalls++
                 onLiveStall()
             }
             handler.removeCallbacks(stuckLive)
             if (state == Player.STATE_BUFFERING && live) {
                 lastLoadAt = SystemClock.elapsedRealtime()
-                stallStartedAt = lastLoadAt
                 lastBuffered = player?.bufferedPosition ?: 0L
                 handler.postDelayed(stuckLive, 1_000)
             }
             if (state == Player.STATE_ENDED) handler.post { onEnd() }
-        }
-
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            val p = player ?: return
-            // Raccord sur la nouvelle version : on retire l'ancienne et on remesure la cadence.
-            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && p.currentMediaItemIndex > 0) {
-                p.removeMediaItems(0, p.currentMediaItemIndex)
-                val ready = wasReady
-                resetRateMatch()
-                wasReady = ready
-                seamlessUntil = SystemClock.elapsedRealtime() + 3_000
-            }
         }
 
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -708,7 +620,7 @@ class NativePlayerActivity : ComponentActivity() {
                 if (url != null) {
                     // L'ancien flux devient le secours : si le nouveau se fige à son tour, on y revient.
                     items[at] = items[at].copy(url = url, backupUrl = item.url)
-                    playCurrent(fastStartMs = SWITCH_START_MS)
+                    playCurrent()
                 } else {
                     isBuffering = false
                     errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
@@ -730,11 +642,7 @@ class NativePlayerActivity : ComponentActivity() {
         playCurrent(target / 60_000 * 60_000)
     }
 
-    private fun playCurrent(offset: Long = 0L, fastStartMs: Long = 0L) {
-        fastStart?.fastStartUs = if (live) fastStartMs * 1000 else 0L
-        LiveReconnectDataSource.clearFinishing()
-        seamlessUntil = 0L
-        aheadSamples.clear()
+    private fun playCurrent(offset: Long = 0L) {
         handler.removeCallbacks(retryLive)
         handler.removeCallbacks(stuckLive)
         handler.removeCallbacks(applyReplaySeek)
@@ -1290,18 +1198,6 @@ class NativePlayerActivity : ComponentActivity() {
         private const val NEXT_FADE_MS = 1500
         /** Direct figé depuis ce délai (après avoir démarré) : bascule sur le flux de secours de la chaîne. */
         private const val BACKUP_AFTER_MS = 4_000L
-        /** Réserve suffisante pour relancer l'image après un changement de version (au lieu de 8 s). */
-        private const val SWITCH_START_MS = 1_500L
-        /** Réserve sous laquelle, si elle fond, on passe plus léger sans coupure. */
-        private const val LOW_AHEAD_MS = 7_000L
-        private const val AHEAD_DROP_MS = 3_000L
-        private const val AHEAD_WINDOW_MS = 20_000L
-        /** Réserve minimale pour remonter en qualité sans coupure. */
-        private const val UPGRADE_AHEAD_MS = 12_000L
-        /** Durée maximale d'un raccord (connexion de la nouvelle version) pendant laquelle les arrêts sont ignorés. */
-        private const val SEAMLESS_GRACE_MS = 20_000L
-        /** Arrêt plus long que ça sur une chaîne qui a une version plus légère : on bascule sans attendre. */
-        private const val LONG_STALL_MS = 3_000L
         private const val STALL_WINDOW_MS = 60_000L
         private const val UPGRADE_AFTER_MS = 10 * 60_000L
         private val SCALES = listOf(
