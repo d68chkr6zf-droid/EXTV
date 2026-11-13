@@ -192,6 +192,7 @@ class NativePlayerActivity : ComponentActivity() {
      */
     private var lastLoadAt = 0L
     private var lastBuffered = 0L
+    private var stallStartedAt = 0L
     private val stuckLive = object : Runnable {
         override fun run() {
             val p = player ?: return
@@ -203,6 +204,11 @@ class NativePlayerActivity : ComponentActivity() {
                 lastLoadAt = now
             }
             val silent = now - lastLoadAt
+            if (now - stallStartedAt > LONG_STALL_MS && canStepDown()) {
+                recentStalls.addLast(now) // deuxième arrêt compté : bascule immédiate
+                onLiveStall()
+                return
+            }
             val hasBackup = wasReady && items.getOrNull(index)?.backupUrl != null
             if ((hasBackup && silent > BACKUP_AFTER_MS) || silent > STUCK_LIVE_MS) {
                 if (!tryBackup()) playCurrent()
@@ -252,8 +258,14 @@ class NativePlayerActivity : ComponentActivity() {
         if (fullUrl == null) fullUrl = item.url
         lighterSince = now
         items[index] = item.copy(url = lighter, backupUrl = item.url)
-        handler.post { playCurrent() }
+        // Version plus légère : l'image repart dès 1,5 s de réserve au lieu de 8 s.
+        handler.post { playCurrent(fastStartMs = SWITCH_START_MS) }
     }
+
+    /** Chaîne qui a déjà joué et reste bloquée plus de [LONG_STALL_MS] : on passe tout de suite plus léger. */
+    private fun canStepDown(): Boolean =
+        live && wasReady && items.getOrNull(index)?.let { com.extv.player.data.FrenchTnt.lighterFor(it.url) } != null
+
 
     private val adaptCheck = object : Runnable {
         override fun run() {
@@ -268,7 +280,7 @@ class NativePlayerActivity : ComponentActivity() {
             fullUrl = null
             if (item.url == full) return
             items[index] = item.copy(url = full, backupUrl = item.url)
-            playCurrent()
+            playCurrent(fastStartMs = UPGRADE_START_MS)
         }
     }
     private val tick = object : Runnable {
@@ -491,6 +503,7 @@ class NativePlayerActivity : ComponentActivity() {
     }
 
     private var liveSourceFactory: ProgressiveMediaSource.Factory? = null
+    private var fastStart: FastStartLoadControl? = null
 
     private fun buildPlayer(): ExoPlayer {
         // La « mémoire tampon réseau » des paramètres sert aussi au lecteur natif.
@@ -499,10 +512,12 @@ class NativePlayerActivity : ComponentActivity() {
         val maxBuffer = maxOf(minBuffer * 2, 50_000)
         val startBuffer = minOf(8_000, minBuffer)
         val rebuffer = minOf(maxOf(caching / 2, 5_000), minBuffer)
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minBuffer, maxBuffer, startBuffer, rebuffer)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+        val loadControl = FastStartLoadControl(
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(minBuffer, maxBuffer, startBuffer, rebuffer)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build(),
+        ).also { fastStart = it }
 
         // OkHttp + DNS chiffré : le flux reste joignable quand la box bloque le serveur par son DNS.
         val http = OkHttpDataSource.Factory(
@@ -558,6 +573,7 @@ class NativePlayerActivity : ComponentActivity() {
             if (state == Player.STATE_READY) {
                 errorText = null
                 wasReady = true
+                fastStart?.fastStartUs = 0L
             }
             if (state == Player.STATE_BUFFERING && wasReady) {
                 stalls++
@@ -566,6 +582,7 @@ class NativePlayerActivity : ComponentActivity() {
             handler.removeCallbacks(stuckLive)
             if (state == Player.STATE_BUFFERING && live) {
                 lastLoadAt = SystemClock.elapsedRealtime()
+                stallStartedAt = lastLoadAt
                 lastBuffered = player?.bufferedPosition ?: 0L
                 handler.postDelayed(stuckLive, 1_000)
             }
@@ -620,7 +637,7 @@ class NativePlayerActivity : ComponentActivity() {
                 if (url != null) {
                     // L'ancien flux devient le secours : si le nouveau se fige à son tour, on y revient.
                     items[at] = items[at].copy(url = url, backupUrl = item.url)
-                    playCurrent()
+                    playCurrent(fastStartMs = SWITCH_START_MS)
                 } else {
                     isBuffering = false
                     errorText = "Lecture impossible. Vérifiez la connexion ou l'abonnement."
@@ -642,7 +659,8 @@ class NativePlayerActivity : ComponentActivity() {
         playCurrent(target / 60_000 * 60_000)
     }
 
-    private fun playCurrent(offset: Long = 0L) {
+    private fun playCurrent(offset: Long = 0L, fastStartMs: Long = 0L) {
+        fastStart?.fastStartUs = if (live) fastStartMs * 1000 else 0L
         handler.removeCallbacks(retryLive)
         handler.removeCallbacks(stuckLive)
         handler.removeCallbacks(applyReplaySeek)
@@ -1198,6 +1216,11 @@ class NativePlayerActivity : ComponentActivity() {
         private const val NEXT_FADE_MS = 1500
         /** Direct figé depuis ce délai (après avoir démarré) : bascule sur le flux de secours de la chaîne. */
         private const val BACKUP_AFTER_MS = 4_000L
+        /** Réserve suffisante pour relancer l'image après un changement de version (au lieu de 8 s). */
+        private const val SWITCH_START_MS = 1_500L
+        private const val UPGRADE_START_MS = 3_000L
+        /** Arrêt plus long que ça sur une chaîne qui a une version plus légère : on bascule sans attendre. */
+        private const val LONG_STALL_MS = 3_000L
         private const val STALL_WINDOW_MS = 60_000L
         private const val UPGRADE_AFTER_MS = 10 * 60_000L
         private val SCALES = listOf(
