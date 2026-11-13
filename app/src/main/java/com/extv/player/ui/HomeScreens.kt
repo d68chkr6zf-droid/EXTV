@@ -194,7 +194,8 @@ fun AddProfileScreen(onDone: () -> Unit) {
             }.onFailure {
                 // Ne jamais afficher l'adresse du serveur dans un message d'erreur.
                 val host = BuildConfig.DEFAULT_SERVER.substringAfter("://")
-                errorMsg = it.message?.takeUnless { m -> m.contains(host, ignoreCase = true) || m.contains("http", ignoreCase = true) }
+                errorMsg = (if (it is IllegalStateException) it.message else com.extv.player.data.Net.friendlyMessage(it))
+                    ?.takeUnless { m -> m.contains(host, ignoreCase = true) || m.contains("http", ignoreCase = true) }
                     ?: "Connexion impossible, réessayez plus tard"
             }
         }
@@ -268,7 +269,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
                     ContentType.MOVIE -> repo.movies(null).size
                     ContentType.SERIES -> repo.series(null).size
                 }
-            }.fold({ CatalogStatus(it, false) }, { CatalogStatus(null, false, it.message ?: "erreur") })
+            }.fold({ CatalogStatus(it, false) }, { CatalogStatus(null, false, com.extv.player.data.Net.friendlyMessage(it)) })
         }
     }
     LaunchedEffect(Unit) {

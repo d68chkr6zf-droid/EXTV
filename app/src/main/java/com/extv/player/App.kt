@@ -12,7 +12,7 @@ import okhttp3.OkHttpClient
 import org.videolan.libvlc.LibVLC
 import java.util.concurrent.TimeUnit
 
-class App : Application() {
+class App : Application(), coil.ImageLoaderFactory {
     lateinit var store: LocalStore
         private set
     lateinit var parental: Parental
@@ -23,11 +23,19 @@ class App : Application() {
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
             .followRedirects(true)
+            // DNS chiffré : passe les blocages DNS des box (« Unable to resolve host »).
+            .dns(com.extv.player.data.SafeDns)
             .addInterceptor { chain ->
                 chain.proceed(chain.request().newBuilder().header("User-Agent", store.userAgent).build())
             }
             .build()
     }
+
+    /** Images (logos, affiches) : même résolution DNS que les listes, sinon elles seraient bloquées aussi. */
+    override fun newImageLoader(): coil.ImageLoader =
+        coil.ImageLoader.Builder(this)
+            .okHttpClient { OkHttpClient.Builder().dns(com.extv.player.data.SafeDns).build() }
+            .build()
 
     private var current: Pair<String, IptvRepository>? = null
     private var repositoryOverride: IptvRepository? = null

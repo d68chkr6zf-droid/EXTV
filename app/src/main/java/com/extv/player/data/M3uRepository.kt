@@ -51,10 +51,12 @@ class M3uRepository(
     }
 
     private suspend fun load(): Data = withContext(Dispatchers.IO) {
-        val playlist = http.newCall(Request.Builder().url(profile.m3uUrl.trim()).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("La liste a répondu HTTP ${r.code}")
-            val body = r.body ?: throw IOException("Réponse vide")
-            M3uParser.parse(body.charStream().buffered())
+        val playlist = Net.withRetry(runCatching { com.extv.player.App.instance }.getOrNull()) {
+            http.newCall(Request.Builder().url(profile.m3uUrl.trim()).build()).execute().use { r ->
+                if (!r.isSuccessful) throw HttpStatusException(r.code)
+                val body = r.body ?: throw IOException("Réponse vide")
+                M3uParser.parse(body.charStream().buffered())
+            }
         }
         if (playlist.entries.isEmpty()) throw IOException("Liste vide ou format non reconnu")
 

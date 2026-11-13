@@ -49,11 +49,14 @@ class XtreamRepository(
                 params.forEach { addQueryParameter(it.first, it.second) }
             }
             .build()
-        val body = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("Le serveur a répondu HTTP ${r.code}")
-            r.body?.string().orEmpty().trim()
+        Net.withRetry(appContext()) {
+            val body = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                if (!r.isSuccessful) throw HttpStatusException(r.code)
+                r.body?.string().orEmpty().trim()
+            }
+            if (body.startsWith("<")) throw ServerPageException()
+            if (body.isEmpty()) JSONArray() else JSONTokener(body).nextValue()
         }
-        if (body.isEmpty()) JSONArray() else JSONTokener(body).nextValue()
     }
 
     private suspend fun apiArray(action: String, vararg params: Pair<String, String>): JSONArray =
@@ -69,9 +72,10 @@ class XtreamRepository(
             .addQueryParameter("password", pass)
             .addQueryParameter("action", action)
             .build()
-        http.newCall(Request.Builder().url(url).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("Le serveur a répondu HTTP ${r.code}")
+        Net.withRetry(appContext()) { http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) throw HttpStatusException(r.code)
             val body = r.body ?: return@use emptyList()
+            if (looksLikeHtml(body.source())) throw ServerPageException()
             val out = ArrayList<T>()
             JsonReader(body.charStream()).use { reader ->
                 if (reader.peek() != JsonToken.BEGIN_ARRAY) {
@@ -100,7 +104,22 @@ class XtreamRepository(
                 reader.endArray()
             }
             out
+        } }
+    }
+
+    private fun appContext(): android.content.Context? = runCatching { com.extv.player.App.instance }.getOrNull()
+
+    /** Premier caractère non blanc « < » : page web (maintenance, blocage) au lieu des données. */
+    private fun looksLikeHtml(source: okio.BufferedSource): Boolean {
+        val peek = source.peek()
+        repeat(64) {
+            if (!peek.request(1)) return false
+            val b = peek.readByte().toInt() and 0xFF
+            if (b >= 0x80) return@repeat // marque d'ordre UTF-8 (BOM)
+            val c = b.toChar()
+            if (!c.isWhitespace()) return c == '<'
         }
+        return false
     }
 
     // --- Catalogue ---------------------------------------------------------------------------

@@ -78,6 +78,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // DNS chiffré (Cloudflare / Google / Quad9) contre les blocages DNS des box
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Moteur de lecture VLC (tous codecs, HLS, MPEG-TS, sous-titres, pistes audio)
@@ -88,6 +90,7 @@ dependencies {
     implementation("androidx.media3:media3-extractor:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.4.1")
     // Bandes-annonces : script injecté dans le lecteur YouTube intégré (forcer le H.264).
     implementation("androidx.webkit:webkit:1.12.1")
 
