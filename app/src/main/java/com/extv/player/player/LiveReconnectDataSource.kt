@@ -9,6 +9,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Flux direct (.ts) : quand la connexion au serveur se coupe ou reste muette, on la rouvre aussitôt
@@ -43,6 +44,15 @@ class LiveReconnectDataSource(
         if (length == 0) return 0
         var attempt = 0
         while (true) {
+            // Changement de version sans coupure : ce flux s'arrête ici (connexion fermée), le lecteur
+            // finit sa réserve pendant que la version suivante se connecte.
+            val uri = reopenSpec?.uri?.toString()
+            if (uri != null && finishing.remove(uri)) {
+                closeUpstream()
+                reopenSpec = null
+                return C.RESULT_END_OF_INPUT
+            }
+            if (reopenSpec == null && !upstreamOpen) return C.RESULT_END_OF_INPUT
             if (upstreamOpen) {
                 try {
                     val n = upstream.read(buffer, offset, length)
@@ -98,7 +108,15 @@ class LiveReconnectDataSource(
         override fun createDataSource(): DataSource = LiveReconnectDataSource(upstream.createDataSource(), onReconnect)
     }
 
-    private companion object {
-        const val MAX_ATTEMPTS = 8
+    companion object {
+        private const val MAX_ATTEMPTS = 8
+        private val finishing: MutableSet<String> = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+        /** Termine proprement le flux [url] en cours de lecture (sa réserve se lit jusqu'au bout). */
+        fun finish(url: String) {
+            finishing += Uri.parse(url).toString()
+        }
+
+        fun clearFinishing() = finishing.clear()
     }
 }
