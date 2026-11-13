@@ -75,7 +75,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import com.extv.player.data.SafeDns
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -472,19 +475,26 @@ class NativePlayerActivity : ComponentActivity() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(store.userAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+        // OkHttp + DNS chiffré : le flux reste joignable quand la box bloque le serveur par son DNS.
+        val http = OkHttpDataSource.Factory(
+            OkHttpClient.Builder()
+                .dns(SafeDns)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .followSslRedirects(true)
+                .build(),
+        ).setUserAgent(store.userAgent)
 
         // Direct .ts : connexion surveillée et rouverte en arrière-plan pendant que la réserve se lit.
         // Un serveur muet 6 s est considéré comme coupé (la réserve couvre la reconnexion).
-        val liveHttp = DefaultHttpDataSource.Factory()
-            .setUserAgent(store.userAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(8_000)
-            .setReadTimeoutMs(6_000)
+        val liveHttp = OkHttpDataSource.Factory(
+            OkHttpClient.Builder()
+                .dns(SafeDns)
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(6, TimeUnit.SECONDS)
+                .followSslRedirects(true)
+                .build(),
+        ).setUserAgent(store.userAgent)
         val extractors = DefaultExtractorsFactory()
             // Chaînes TV dont les images clés ne sont pas marquées « IDR » : démarrage et raccord plus rapides.
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES)

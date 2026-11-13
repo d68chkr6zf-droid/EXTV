@@ -281,7 +281,8 @@ class PlayerActivity : ComponentActivity() {
         isBuffering = true
 
         val url = if (item.replayUrlAt != null && baseOffset > 0) item.replayUrlAt.invoke(baseOffset) else item.url
-        val media = Media(libVlc, Uri.parse(url))
+        // VLC passe par le DNS de la TV : adresse IP directe si celui-ci bloque le serveur.
+        val media = Media(libVlc, Uri.parse(com.extv.player.data.SafeDns.urlForSystemResolver(url)))
         media.setHWDecoderEnabled(store.hwDecoding, false)
         media.addOption(":http-user-agent=${store.userAgent}")
         if (store.deinterlace) {

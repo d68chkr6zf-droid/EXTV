@@ -654,7 +654,7 @@ fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier, idle
         // sinon l'aperçu reste noir.
         if (!player.vlcVout.areViewsAttached()) player.attachViews(layout, null, false, false)
         if (url != null) {
-            val media = Media(app.libVlc, Uri.parse(url))
+            val media = Media(app.libVlc, Uri.parse(com.extv.player.data.SafeDns.urlForSystemResolver(url)))
             media.setHWDecoderEnabled(app.store.hwDecoding, false)
             media.addOption(":http-user-agent=${app.store.userAgent}")
             media.addOption(":network-caching=${app.store.networkCaching}")
@@ -750,7 +750,7 @@ fun <T> LoadView(loader: Loader<T>, modifier: Modifier = Modifier.fillMaxSize(),
         is Load.Loading -> Box(modifier, contentAlignment = Alignment.Center) { CircularProgressIndicator(color = C.Accent) }
         is Load.Err -> Box(modifier, contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(s.error.message ?: s.error.toString(), color = C.Error, modifier = Modifier.padding(16.dp))
+                Text(com.extv.player.data.Net.friendlyMessage(s.error), color = C.Error, modifier = Modifier.padding(16.dp))
                 ActionButton("Réessayer", onClick = loader.retry)
             }
         }
