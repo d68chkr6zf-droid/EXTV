@@ -654,7 +654,7 @@ fun VlcPreview(url: String?, muted: Boolean, modifier: Modifier = Modifier, idle
         // sinon l'aperçu reste noir.
         if (!player.vlcVout.areViewsAttached()) player.attachViews(layout, null, false, false)
         if (url != null) {
-            val media = Media(app.libVlc, Uri.parse(com.extv.player.data.SafeDns.urlForSystemResolver(url)))
+            val media = Media(app.libVlc, Uri.parse(url))
             media.setHWDecoderEnabled(app.store.hwDecoding, false)
             media.addOption(":http-user-agent=${app.store.userAgent}")
             media.addOption(":network-caching=${app.store.networkCaching}")
