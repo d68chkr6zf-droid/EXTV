@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -38,6 +39,7 @@ object KeyLog {
     /** Une ligne du diagnostic ; [appMs] est complété quand l'image qui suit l'appui est prête. */
     class Entry(val text: String) {
         @Volatile var appMs = -1L
+        @Volatile var cpuMs = -1L
     }
     private val lines = ArrayDeque<Entry>()
     private var lastDownAt = 0L
@@ -60,6 +62,9 @@ object KeyLog {
     var appCount = 0L
         private set
     var appWorst = 0L
+        private set
+    /** Part de ce temps où le fil de l'interface calculait vraiment (le reste : il attendait le processeur ou autre chose). */
+    var cpuTotal = 0L
         private set
     private var monitoring = false
 
@@ -218,16 +223,18 @@ object KeyLog {
     }
 
     /** Temps passé dans l'appli pour un appui : de sa réception à l'image suivante prête. */
-    fun shown(entry: Entry, ms: Long) {
+    fun shown(entry: Entry, ms: Long, cpuMs: Long) {
         entry.appMs = ms
+        entry.cpuMs = cpuMs
         appTotal += ms
+        cpuTotal += cpuMs
         appCount++
         if (ms > appWorst) appWorst = ms
-        event("IMAGE ${ms}ms")
+        event("IMAGE ${ms}ms calcul=${cpuMs}ms")
     }
 
     fun snapshot(): List<String> = synchronized(lines) {
-        lines.map { if (it.appMs >= 0) "${it.text}  appli=${it.appMs}ms" else it.text }
+        lines.map { if (it.appMs >= 0) "${it.text}  appli=${it.appMs}ms (calcul ${it.cpuMs})" else it.text }
     }
 
     /** Services d'accessibilité actifs ; ceux qui interceptent les touches les retiennent avant l'appli. */
@@ -241,8 +248,101 @@ object KeyLog {
     }.getOrDefault("?")
 }
 
+/**
+ * Échantillonneur du fil principal, actif seulement pendant le diagnostic : toutes les 15 ms, regarde ce que
+ * fait le fil de l'interface et le range dans une catégorie (accessibilité, recomposition, texte, dessin…).
+ * Sert à savoir ce qui occupe l'appli plusieurs centaines de millisecondes par appui sur certains boîtiers.
+ */
+object MainThreadSampler {
+    private const val INTERVAL_MS = 15L
+    @Volatile private var running = false
+    private var samples = 0
+    private var busy = 0
+    private val categories = HashMap<String, Int>()
+    private val leaves = HashMap<String, Int>()
+
+    // Dans l'ordre de recherche, du sommet de la pile vers le bas : la première trouvée l'emporte.
+    private val markers = listOf(
+        "AccessibilityInteractionController" to "Accessibilité (lecture de l'écran)",
+        "AccessibilityNodeInfo" to "Accessibilité (lecture de l'écran)",
+        "AccessibilityDelegate" to "Accessibilité (Compose)",
+        "semantics" to "Accessibilité (Compose)",
+        "nSyncAndDrawFrame" to "Attente du dessin (GPU)",
+        "ThreadedRenderer" to "Attente du dessin (GPU)",
+        "android.text." to "Texte",
+        "androidx.compose.ui.text" to "Texte",
+        "Typeface" to "Texte",
+        "Painter" to "Images",
+        "coil." to "Images",
+        "BitmapFactory" to "Images",
+        "MeasureAndLayoutDelegate" to "Compose : mise en page",
+        "LayoutNode" to "Compose : mise en page",
+        "Recomposer" to "Compose : recomposition",
+        "ComposerImpl" to "Compose : recomposition",
+        "draw" to "Compose : dessin",
+        "Focus" to "Focus",
+        "dispatchKeyEvent" to "Touches",
+        "SharedPreferences" to "Lecture des réglages",
+        "java.io" to "Fichiers",
+        "okhttp" to "Réseau",
+    )
+
+    fun start() {
+        if (running) return
+        running = true
+        synchronized(this) { samples = 0; busy = 0; categories.clear(); leaves.clear() }
+        val main = android.os.Looper.getMainLooper().thread
+        Thread {
+            while (running) {
+                runCatching { record(main.stackTrace) }
+                try { Thread.sleep(INTERVAL_MS) } catch (e: InterruptedException) { break }
+            }
+        }.apply { name = "extv-diag-sampler"; isDaemon = true; priority = Thread.MIN_PRIORITY }.start()
+    }
+
+    fun stop() {
+        running = false
+    }
+
+    private fun record(stack: Array<StackTraceElement>) {
+        if (stack.isEmpty()) return
+        val top = stack[0]
+        val idle = top.methodName == "nativePollOnce" || top.className == "android.os.MessageQueue"
+        synchronized(this) {
+            samples++
+            if (idle) return
+            busy++
+            val frames = stack.take(60).map { "${it.className}.${it.methodName}" }
+            val category = frames.firstNotNullOfOrNull { f -> markers.firstOrNull { f.contains(it.first) }?.second } ?: "Autre"
+            categories[category] = (categories[category] ?: 0) + 1
+            // Première méthode « parlante » en partant du sommet (hors java.*, système de base).
+            val leaf = stack.firstOrNull { e ->
+                val c = e.className
+                !c.startsWith("java.") && !c.startsWith("dalvik.") && !c.startsWith("libcore.") && !c.startsWith("sun.")
+            } ?: top
+            val name = leaf.className.substringAfterLast('.') + "." + leaf.methodName
+            leaves[name] = (leaves[name] ?: 0) + 1
+        }
+    }
+
+    /** Deux lignes : part du temps occupé et catégories, puis méthodes les plus vues. */
+    fun summary(): Pair<String, String> = synchronized(this) {
+        if (samples == 0) return@synchronized "Fil de l'interface : mesure en cours…" to ""
+        val busyPct = busy * 100 / samples
+        val cats = categories.entries.sortedByDescending { it.value }.take(5)
+            .joinToString(" · ") { "${it.key} ${it.value * 100 / maxOf(busy, 1)} %" }
+        val top = leaves.entries.sortedByDescending { it.value }.take(4)
+            .joinToString(" · ") { "${it.key.take(48)} ${it.value * 100 / maxOf(busy, 1)} %" }
+        "Fil de l'interface occupé $busyPct % du temps : $cats" to "Méthodes : $top"
+    }
+}
+
 @Composable
 fun KeyDiagnosticScreen(onClose: () -> Unit) {
+    DisposableEffect(Unit) {
+        MainThreadSampler.start()
+        onDispose { MainThreadSampler.stop() }
+    }
     BackHandler(onBack = onClose)
     val context = LocalContext.current
     val focus = remember { FocusRequester() }
@@ -285,7 +385,12 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
                 "Appuyez sur les flèches comme d'habitude, puis prenez une photo de cet écran. Retour pour fermer.",
                 color = C.TextDim, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
             )
-            Text("${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE}", fontSize = 14.sp)
+            val debuggable = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+            Text(
+                "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · EXTV ${com.extv.player.BuildConfig.VERSION_NAME} " +
+                    if (debuggable) "(version de test, mode débogage)" else "(version optimisée)",
+                fontSize = 14.sp,
+            )
             Text(display, fontSize = 14.sp)
             key(shown.intValue) {
                 val mem = "Mémoire ${(rt.totalMemory() - rt.freeMemory()) / 1_048_576} / ${rt.maxMemory() / 1_048_576} Mo"
@@ -297,10 +402,14 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
                 )
                 val waitAvg = if (KeyLog.downs > 0) KeyLog.waitTotal / KeyLog.downs else 0
                 val appAvg = if (KeyLog.appCount > 0) KeyLog.appTotal / KeyLog.appCount else 0
+                val cpuAvg = if (KeyLog.appCount > 0) KeyLog.cpuTotal / KeyLog.appCount else 0
                 Text(
-                    "Temps moyen d'un appui : avant l'appli $waitAvg ms · dans l'appli $appAvg ms (pire ${KeyLog.appWorst} ms)",
+                    "Temps moyen d'un appui : avant l'appli $waitAvg ms · dans l'appli $appAvg ms dont calcul $cpuAvg ms (pire ${KeyLog.appWorst} ms)",
                     color = C.Accent, fontSize = 14.sp,
                 )
+                val (sampleLine, methodsLine) = MainThreadSampler.summary()
+                Text(sampleLine, color = C.Accent, fontSize = 13.sp)
+                if (methodsLine.isNotEmpty()) Text(methodsLine, color = C.Accent, fontSize = 12.sp)
             }
             Text("Appareils : $devices", color = C.TextDim, fontSize = 12.sp)
             Text("Accessibilité : $services", color = C.TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
