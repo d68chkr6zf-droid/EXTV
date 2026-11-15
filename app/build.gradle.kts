@@ -41,6 +41,9 @@ android {
     buildTypes {
         debug {
             if (keystore != null) signingConfig = signingConfigs.getByName("fixed")
+            // Version d'essai « optimisée » (-PextvDebuggable=false) : même appli, sans le mode débogage
+            // qui ralentit l'interface. Par défaut, rien ne change.
+            isDebuggable = (project.findProperty("extvDebuggable")?.toString() ?: "true").toBoolean()
         }
         release {
             isMinifyEnabled = false

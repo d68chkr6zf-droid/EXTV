@@ -42,11 +42,32 @@ jobs:
         run: |
           mkdir dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/EXTV.apk
-          rm -f "$RUNNER_TEMP/extv.p12"
           # Le bouton « Mise à jour » de l'appli ne propose que les versions signées avec la clé fixe.
           if [ -n "$EXTV_KEYSTORE" ]; then
             echo "{\"versionCode\": $GITHUB_RUN_NUMBER, \"versionName\": \"1.0.$GITHUB_RUN_NUMBER\"}" > dist/version.json
           fi
+      - name: Versions d'essai (branches seulement, jamais proposées aux abonnés)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          set -o pipefail
+          cp dist/EXTV.apk dist/EXTV-test-A.apk
+          ./gradlew assembleDebug -PextvDebuggable=false --stacktrace 2>&1 | tee build-b.log
+          cp app/build/outputs/apk/debug/app-debug.apk dist/EXTV-test-B.apk
+          rm -f dist/version.json
+      - name: Effacer la clé de signature du serveur de compilation
+        if: always()
+        run: rm -f "$RUNNER_TEMP/extv.p12"
+      - name: Publier les versions d'essai (lien séparé, sans fichier de version)
+        if: github.ref != 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test
+          name: EXTV (versions d'essai, ne pas diffuser)
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/EXTV-test-A.apk
+            dist/EXTV-test-B.apk
       - uses: actions/upload-artifact@v4
         with:
           name: extv-debug

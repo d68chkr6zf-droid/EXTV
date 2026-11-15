@@ -39,6 +39,7 @@ object KeyLog {
     /** Une ligne du diagnostic ; [appMs] est complété quand l'image qui suit l'appui est prête. */
     class Entry(val text: String) {
         @Volatile var appMs = -1L
+        @Volatile var cpuMs = -1L
     }
     private val lines = ArrayDeque<Entry>()
     private var lastDownAt = 0L
@@ -61,6 +62,9 @@ object KeyLog {
     var appCount = 0L
         private set
     var appWorst = 0L
+        private set
+    /** Part de ce temps où le fil de l'interface calculait vraiment (le reste : il attendait le processeur ou autre chose). */
+    var cpuTotal = 0L
         private set
     private var monitoring = false
 
@@ -219,16 +223,18 @@ object KeyLog {
     }
 
     /** Temps passé dans l'appli pour un appui : de sa réception à l'image suivante prête. */
-    fun shown(entry: Entry, ms: Long) {
+    fun shown(entry: Entry, ms: Long, cpuMs: Long) {
         entry.appMs = ms
+        entry.cpuMs = cpuMs
         appTotal += ms
+        cpuTotal += cpuMs
         appCount++
         if (ms > appWorst) appWorst = ms
-        event("IMAGE ${ms}ms")
+        event("IMAGE ${ms}ms calcul=${cpuMs}ms")
     }
 
     fun snapshot(): List<String> = synchronized(lines) {
-        lines.map { if (it.appMs >= 0) "${it.text}  appli=${it.appMs}ms" else it.text }
+        lines.map { if (it.appMs >= 0) "${it.text}  appli=${it.appMs}ms (calcul ${it.cpuMs})" else it.text }
     }
 
     /** Services d'accessibilité actifs ; ceux qui interceptent les touches les retiennent avant l'appli. */
@@ -379,7 +385,12 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
                 "Appuyez sur les flèches comme d'habitude, puis prenez une photo de cet écran. Retour pour fermer.",
                 color = C.TextDim, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp),
             )
-            Text("${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE}", fontSize = 14.sp)
+            val debuggable = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+            Text(
+                "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · EXTV ${com.extv.player.BuildConfig.VERSION_NAME} " +
+                    if (debuggable) "(version de test, mode débogage)" else "(version optimisée)",
+                fontSize = 14.sp,
+            )
             Text(display, fontSize = 14.sp)
             key(shown.intValue) {
                 val mem = "Mémoire ${(rt.totalMemory() - rt.freeMemory()) / 1_048_576} / ${rt.maxMemory() / 1_048_576} Mo"
@@ -391,8 +402,9 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
                 )
                 val waitAvg = if (KeyLog.downs > 0) KeyLog.waitTotal / KeyLog.downs else 0
                 val appAvg = if (KeyLog.appCount > 0) KeyLog.appTotal / KeyLog.appCount else 0
+                val cpuAvg = if (KeyLog.appCount > 0) KeyLog.cpuTotal / KeyLog.appCount else 0
                 Text(
-                    "Temps moyen d'un appui : avant l'appli $waitAvg ms · dans l'appli $appAvg ms (pire ${KeyLog.appWorst} ms)",
+                    "Temps moyen d'un appui : avant l'appli $waitAvg ms · dans l'appli $appAvg ms dont calcul $cpuAvg ms (pire ${KeyLog.appWorst} ms)",
                     color = C.Accent, fontSize = 14.sp,
                 )
                 val (sampleLine, methodsLine) = MainThreadSampler.summary()

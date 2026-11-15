@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val receivedAt = SystemClock.uptimeMillis()
+        val cpuAt = SystemClock.currentThreadTimeMillis()
         val drop = event.action == KeyEvent.ACTION_DOWN && event.keyCode in ARROWS && arrowDrop(event)
         val entry = com.extv.player.ui.KeyLog.record(event, drop)
         if (drop) return true
@@ -109,7 +110,9 @@ class MainActivity : ComponentActivity() {
         // Diagnostic : temps passé dans l'appli, jusqu'à la fin de l'image qui suit l'appui.
         if (entry != null && event.action == KeyEvent.ACTION_DOWN) {
             Choreographer.getInstance().postFrameCallback {
-                window.decorView.post { com.extv.player.ui.KeyLog.shown(entry, SystemClock.uptimeMillis() - receivedAt) }
+                window.decorView.post {
+                    com.extv.player.ui.KeyLog.shown(entry, SystemClock.uptimeMillis() - receivedAt, SystemClock.currentThreadTimeMillis() - cpuAt)
+                }
             }
         }
         return handled
