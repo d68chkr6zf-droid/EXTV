@@ -198,10 +198,14 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean("subBg", true)
         set(value) = prefs.edit().putBoolean("subBg", value).apply()
 
-    /** Extension des flux live Xtream : "ts" ou "m3u8". */
+    /**
+     * Extension des flux live Xtream : "m3u8" (HLS, par défaut) ou "ts" (MPEG-TS).
+     * Nouvelle clé « liveFormatHls » : l'ancienne (« liveFormat », défaut "ts") est ignorée pour que
+     * chaque appareil passe une fois en HLS ; le choix fait ensuite dans Paramètres est conservé.
+     */
     var liveFormat: String
-        get() = prefs.getString("liveFormat", "ts") ?: "ts"
-        set(value) = prefs.edit().putString("liveFormat", value).apply()
+        get() = prefs.getString("liveFormatHls", "m3u8") ?: "m3u8"
+        set(value) = prefs.edit().putString("liveFormatHls", value).apply()
 
     var userAgent: String
         get() = prefs.getString("ua", DEFAULT_USER_AGENT) ?: DEFAULT_USER_AGENT
