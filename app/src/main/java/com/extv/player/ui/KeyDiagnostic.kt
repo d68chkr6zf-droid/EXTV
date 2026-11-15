@@ -35,7 +35,11 @@ import androidx.compose.ui.unit.sp
  */
 object KeyLog {
     private const val MAX = 24
-    private val lines = ArrayDeque<String>()
+    /** Une ligne du diagnostic ; [appMs] est complété quand l'image qui suit l'appui est prête. */
+    class Entry(val text: String) {
+        @Volatile var appMs = -1L
+    }
+    private val lines = ArrayDeque<Entry>()
     private var lastDownAt = 0L
     val version = mutableIntStateOf(0)
 
@@ -47,6 +51,16 @@ object KeyLog {
     var worstLateMs = 0L
         private set
     val frames = LongArray(3) // total, > 34 ms, > 100 ms
+
+    // Partage du retard des flèches : avant l'appli (système, télécommande) et dans l'appli (traitement + image).
+    var waitTotal = 0L
+        private set
+    var appTotal = 0L
+        private set
+    var appCount = 0L
+        private set
+    var appWorst = 0L
+        private set
     private var monitoring = false
 
     /** Compte les images lentes de toute l'appli (appelé une fois par MainActivity). */
@@ -160,9 +174,12 @@ object KeyLog {
             "anim=$anim access=${am.isEnabled} touch=${am.isTouchExplorationEnabled} services=[$services] tactile=${app.resources.configuration.touchscreen}\nentrées: $devices"
     }.getOrDefault("?")
 
-    /** Appelé par MainActivity pour chaque touche, avant tout traitement ([dropped] : ignorée par le filtre des flèches). */
-    fun record(e: KeyEvent, dropped: Boolean = false) {
-        if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return
+    /**
+     * Appelé par MainActivity pour chaque touche, avant tout traitement ([dropped] : ignorée par le filtre des flèches).
+     * Renvoie la ligne notée, à compléter par [shown] une fois l'image suivante prête.
+     */
+    fun record(e: KeyEvent, dropped: Boolean = false): Entry? {
+        if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return null
         keyEvent(e, dropped)
         val now = SystemClock.uptimeMillis()
         val gap = if (e.action == KeyEvent.ACTION_DOWN) {
@@ -177,6 +194,7 @@ object KeyLog {
             downs++
             if (late > 100) lateDowns++
             if (late > worstLateMs) worstLateMs = late
+            waitTotal += late
         }
         val dev = e.device
         val line = String.format(
@@ -190,14 +208,37 @@ object KeyLog {
             dev?.name?.take(22) ?: "?",
             e.source,
         )
+        val entry = Entry(line)
         synchronized(lines) {
-            lines.addFirst(line)
+            lines.addFirst(entry)
             while (lines.size > MAX) lines.removeLast()
         }
         version.intValue++
+        return entry
     }
 
-    fun snapshot(): List<String> = synchronized(lines) { lines.toList() }
+    /** Temps passé dans l'appli pour un appui : de sa réception à l'image suivante prête. */
+    fun shown(entry: Entry, ms: Long) {
+        entry.appMs = ms
+        appTotal += ms
+        appCount++
+        if (ms > appWorst) appWorst = ms
+        event("IMAGE ${ms}ms")
+    }
+
+    fun snapshot(): List<String> = synchronized(lines) {
+        lines.map { if (it.appMs >= 0) "${it.text}  appli=${it.appMs}ms" else it.text }
+    }
+
+    /** Services d'accessibilité actifs ; ceux qui interceptent les touches les retiennent avant l'appli. */
+    fun accessibilityServices(context: android.content.Context): String = runCatching {
+        val am = context.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+        am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .joinToString("  |  ") { s ->
+                val filters = s.flags and android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS != 0
+                s.id.take(60) + if (filters) " (intercepte les touches)" else ""
+            }.ifEmpty { "aucun" }
+    }.getOrDefault("?")
 }
 
 @Composable
@@ -232,6 +273,8 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
             .joinToString("  |  ") { "${it.id}: ${it.name.take(28)}" }
     }
 
+    val services = remember { KeyLog.accessibilityServices(context) }
+
     Box(
         Modifier.fillMaxSize().background(Color(0xF0101014)).focusRequester(focus).focusable()
             .padding(screenPadding()),
@@ -252,9 +295,17 @@ fun KeyDiagnosticScreen(onClose: () -> Unit) {
                     "Appuis traités en retard (> 100 ms) : ${KeyLog.lateDowns} sur ${KeyLog.downs} · pire retard ${KeyLog.worstLateMs} ms",
                     fontSize = 14.sp,
                 )
+                val waitAvg = if (KeyLog.downs > 0) KeyLog.waitTotal / KeyLog.downs else 0
+                val appAvg = if (KeyLog.appCount > 0) KeyLog.appTotal / KeyLog.appCount else 0
+                Text(
+                    "Temps moyen d'un appui : avant l'appli $waitAvg ms · dans l'appli $appAvg ms (pire ${KeyLog.appWorst} ms)",
+                    color = C.Accent, fontSize = 14.sp,
+                )
             }
-            Text("Appareils : $devices", color = C.TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-            key(v) {
+            Text("Appareils : $devices", color = C.TextDim, fontSize = 12.sp)
+            Text("Accessibilité : $services", color = C.TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+            // Rafraîchi aussi toutes les 500 ms, pour afficher le temps « appli » complété après l'image.
+            key(v, shown.intValue) {
                 KeyLog.snapshot().forEach { Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
             }
         }
