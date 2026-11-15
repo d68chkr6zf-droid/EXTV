@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -380,7 +379,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
         ScreenTitle("Paramètres · version ${Updater.currentVersion}")
-        key(tick) {
+        // Ne pas utiliser key(tick) ici : cela recréait toutes les lignes à chaque OK et le focus
+        // repartait en haut. Lire tick suffit à recomposer les valeurs en gardant la ligne active.
+        run {
+            check(tick >= 0)
             Section("Compte")
             InfoRow("Compte", profile?.name ?: "-")
             account.value?.let { a ->
