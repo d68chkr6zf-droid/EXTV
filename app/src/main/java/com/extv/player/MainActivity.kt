@@ -60,9 +60,28 @@ class MainActivity : ComponentActivity() {
      * lecteur d'écran (TalkBack) est actif. Sur le Formuler, le service de la télécommande est un service
      * d'accessibilité : chaque déplacement du focus lui était annoncé et l'appli prenait jusqu'à 1 s de
      * retard sur les touches (0,4 s au pire sur un boîtier sans ce service).
+     *
+     * Sans lecteur d'écran, le contenu est aussi caché aux services d'accessibilité : le service de la
+     * télécommande Formuler (tv.formuler.remoteupgrade.mapper) intercepte chaque touche et peut relire tout
+     * l'écran à chaque appui, ce que l'appli devait calculer sur son fil principal (diagnostic du 15/11 :
+     * environ 300 ms passés dans l'appli par flèche sur le Z12, sur un écran presque vide). Ce service n'a
+     * besoin que des touches, pas du contenu, et la navigation au focus n'utilise pas l'accessibilité.
      */
     private class QuietAccessibilityLayout(context: android.content.Context) : android.widget.FrameLayout(context) {
         private val manager = context.getSystemService(ACCESSIBILITY_SERVICE) as android.view.accessibility.AccessibilityManager
+
+        init {
+            updateVisibilityForServices()
+            manager.addTouchExplorationStateChangeListener { updateVisibilityForServices() }
+        }
+
+        private fun updateVisibilityForServices() {
+            importantForAccessibility = if (manager.isTouchExplorationEnabled) {
+                IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            } else {
+                IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }
+        }
 
         override fun requestSendAccessibilityEvent(child: android.view.View, event: android.view.accessibility.AccessibilityEvent): Boolean =
             if (manager.isTouchExplorationEnabled) super.requestSendAccessibilityEvent(child, event) else false
