@@ -136,6 +136,11 @@ class LocalStore(private val prefs: SharedPreferences) {
         get() = prefs.getString("startPin", "") ?: ""
         set(value) = prefs.edit().putString("startPin", value).apply()
 
+    /** Code qui protège la section « Lecteur » des Paramètres (cachée tant qu'il n'est pas saisi). */
+    var playerSettingsPin: String
+        get() = prefs.getString("playerSettingsPin", DEFAULT_PLAYER_SETTINGS_PIN) ?: DEFAULT_PLAYER_SETTINGS_PIN
+        set(value) = prefs.edit().putString("playerSettingsPin", value).apply()
+
     var autoLockAdult: Boolean
         get() = prefs.getBoolean("autoLockAdult", true)
         set(value) = prefs.edit().putBoolean("autoLockAdult", value).apply()
@@ -235,6 +240,8 @@ class LocalStore(private val prefs: SharedPreferences) {
         /** Agent « Linux » (Android TV) par défaut. */
         val DEFAULT_USER_AGENT = USER_AGENTS[1]
         val CACHING_VALUES = listOf(1000, 2000, 3000, 5000, 8000, 10000, 12000, 16000, 20000, 30000)
+        /** Code par défaut des réglages du lecteur (modifiable via playerSettingsPin). */
+        const val DEFAULT_PLAYER_SETTINGS_PIN = "4386"
     }
 }
 

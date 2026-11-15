@@ -331,8 +331,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var newStartPin by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var keyDiagnostic by remember { mutableStateOf(false) }
+    // Section « Lecteur » cachée derrière un code ; déverrouillée jusqu'à la sortie des Paramètres.
+    var playerUnlocked by remember { mutableStateOf(false) }
+    var askPlayerPin by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    LaunchedEffect(playerUnlocked) { runCatching { first.requestFocus() } }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var updateText by remember { mutableStateOf("Vérifier") }
@@ -401,42 +404,46 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             }
 
             Section("Lecteur")
-            SettingRow("Lecteur vidéo", if (store.playerEngine == "native") "Natif (Android)" else "VLC", first) {
-                store.playerEngine = if (store.playerEngine == "native") "vlc" else "native"
-                changed()
-            }
-            SettingRow("Fréquence d'écran adaptée (50/60 Hz, natif)", if (store.matchFrameRate) "Activé" else "Désactivé") {
-                store.matchFrameRate = !store.matchFrameRate
-                changed()
-            }
-            SettingRow("Décodage matériel (VLC)", if (store.hwDecoding) "Activé" else "Désactivé") {
-                store.hwDecoding = !store.hwDecoding
-                changed()
-            }
-            SettingRow("Mode sport", if (store.deinterlace) "Activé" else "Désactivé") {
-                store.deinterlace = !store.deinterlace
-                changed()
-            }
-            SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
-                store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
-                changed()
-            }
-            SettingRow("Mémoire tampon réseau", "${store.networkCaching} ms") {
-                val values = LocalStore.CACHING_VALUES
-                store.networkCaching = values[(values.indexOf(store.networkCaching) + 1).mod(values.size)]
-                changed()
-            }
-            if (profile?.type == ProfileType.XTREAM) {
-                SettingRow("Format des flux en direct", if (store.liveFormat == "ts") "MPEG-TS (.ts)" else "HLS (.m3u8)") {
-                    store.liveFormat = if (store.liveFormat == "ts") "m3u8" else "ts"
-                    app.resetRepository()
+            if (!playerUnlocked) {
+                SettingRow("Réglages du lecteur", "Protégé par un code", first) { askPlayerPin = true }
+            } else {
+                SettingRow("Lecteur vidéo", if (store.playerEngine == "native") "Natif (Android)" else "VLC", first) {
+                    store.playerEngine = if (store.playerEngine == "native") "vlc" else "native"
                     changed()
                 }
-            }
-            SettingRow("User-Agent", store.userAgent.take(40)) {
-                val values = LocalStore.USER_AGENTS
-                store.userAgent = values[(values.indexOf(store.userAgent) + 1).mod(values.size)]
-                changed()
+                SettingRow("Fréquence d'écran adaptée (50/60 Hz, natif)", if (store.matchFrameRate) "Activé" else "Désactivé") {
+                    store.matchFrameRate = !store.matchFrameRate
+                    changed()
+                }
+                SettingRow("Décodage matériel (VLC)", if (store.hwDecoding) "Activé" else "Désactivé") {
+                    store.hwDecoding = !store.hwDecoding
+                    changed()
+                }
+                SettingRow("Mode sport", if (store.deinterlace) "Activé" else "Désactivé") {
+                    store.deinterlace = !store.deinterlace
+                    changed()
+                }
+                SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
+                    store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
+                    changed()
+                }
+                SettingRow("Mémoire tampon réseau", "${store.networkCaching} ms") {
+                    val values = LocalStore.CACHING_VALUES
+                    store.networkCaching = values[(values.indexOf(store.networkCaching) + 1).mod(values.size)]
+                    changed()
+                }
+                if (profile?.type == ProfileType.XTREAM) {
+                    SettingRow("Format des flux en direct", if (store.liveFormat == "ts") "MPEG-TS (.ts)" else "HLS (.m3u8)") {
+                        store.liveFormat = if (store.liveFormat == "ts") "m3u8" else "ts"
+                        app.resetRepository()
+                        changed()
+                    }
+                }
+                SettingRow("User-Agent", store.userAgent.take(40)) {
+                    val values = LocalStore.USER_AGENTS
+                    store.userAgent = values[(values.indexOf(store.userAgent) + 1).mod(values.size)]
+                    changed()
+                }
             }
 
             Section("Sous-titres")
@@ -492,6 +499,17 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         }
     }
 
+    if (askPlayerPin) {
+        PinDialog(
+            title = "Code des réglages du lecteur",
+            onDismiss = { askPlayerPin = false },
+            check = { it == store.playerSettingsPin },
+        ) {
+            askPlayerPin = false
+            playerUnlocked = true
+            tick++
+        }
+    }
     pinRequest?.let { action ->
         PinDialog(onDismiss = { pinRequest = null }) {
             pinRequest = null
