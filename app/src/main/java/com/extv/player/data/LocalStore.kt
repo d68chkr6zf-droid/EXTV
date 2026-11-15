@@ -149,14 +149,16 @@ class LocalStore(private val prefs: SharedPreferences) {
     }
 
     // --- Lecteur -----------------------------------------------------------------------------
+    // Défauts = réglages de JONATHAN (15/11/2026). Les clés suffixées « 2 » (et « liveFormatHls ») remplacent
+    // les anciennes pour que chaque appareil reprenne une fois ces valeurs ; les choix faits ensuite sont conservés.
 
     var hwDecoding: Boolean
         get() = prefs.getBoolean("hw", true)
         set(value) = prefs.edit().putBoolean("hw", value).apply()
 
     var networkCaching: Int
-        get() = prefs.getInt("caching", 20000)
-        set(value) = prefs.edit().putInt("caching", value).apply()
+        get() = prefs.getInt("caching2", 30000)
+        set(value) = prefs.edit().putInt("caching2", value).apply()
 
     /** Marge de sécurité autour de l'interface, en % de l'écran (0 par défaut ; -1 = automatique : 5 % sur TV). */
     var overscan: Int
@@ -171,8 +173,8 @@ class LocalStore(private val prefs: SharedPreferences) {
 
     /** Lecteur natif : caler la fréquence de l'écran (50/60 Hz) sur celle de la vidéo. */
     var matchFrameRate: Boolean
-        get() = prefs.getBoolean("match_fps", true)
-        set(value) = prefs.edit().putBoolean("match_fps", value).apply()
+        get() = prefs.getBoolean("match_fps2", false)
+        set(value) = prefs.edit().putBoolean("match_fps2", value).apply()
 
     var playerEngine: String
         get() = prefs.getString("engine", "native") ?: "native"
@@ -185,8 +187,8 @@ class LocalStore(private val prefs: SharedPreferences) {
 
     /** Malentendants : sous-titres activés d'office (piste SME/française de préférence) + code couleur. */
     var sdhMode: Boolean
-        get() = prefs.getBoolean("sdh", false)
-        set(value) = prefs.edit().putBoolean("sdh", value).apply()
+        get() = prefs.getBoolean("sdh2", true)
+        set(value) = prefs.edit().putBoolean("sdh2", value).apply()
 
     /** Taille des sous-titres : index dans SdhSubtitles.SIZES. */
     var subtitleSize: Int
@@ -195,13 +197,17 @@ class LocalStore(private val prefs: SharedPreferences) {
 
     /** Sous-titres sur un bandeau noir (sinon texte contouré de noir). */
     var subtitleBackground: Boolean
-        get() = prefs.getBoolean("subBg", true)
-        set(value) = prefs.edit().putBoolean("subBg", value).apply()
+        get() = prefs.getBoolean("subBg2", false)
+        set(value) = prefs.edit().putBoolean("subBg2", value).apply()
 
-    /** Extension des flux live Xtream : "ts" ou "m3u8". */
+    /**
+     * Extension des flux live Xtream : "m3u8" (HLS, par défaut) ou "ts" (MPEG-TS).
+     * Nouvelle clé « liveFormatHls » : l'ancienne (« liveFormat », défaut "ts") est ignorée pour que
+     * chaque appareil passe une fois en HLS ; le choix fait ensuite dans Paramètres est conservé.
+     */
     var liveFormat: String
-        get() = prefs.getString("liveFormat", "ts") ?: "ts"
-        set(value) = prefs.edit().putString("liveFormat", value).apply()
+        get() = prefs.getString("liveFormatHls", "m3u8") ?: "m3u8"
+        set(value) = prefs.edit().putString("liveFormatHls", value).apply()
 
     var userAgent: String
         get() = prefs.getString("ua", DEFAULT_USER_AGENT) ?: DEFAULT_USER_AGENT
