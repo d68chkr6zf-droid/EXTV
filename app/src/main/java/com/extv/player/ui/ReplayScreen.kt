@@ -1,6 +1,7 @@
 package com.extv.player.ui
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -188,59 +189,120 @@ private fun ReplayBody(sections: List<ReplaySection>) {
     }
     val selected = focusedProgram?.takeIf { it in dayPrograms } ?: dayPrograms.firstOrNull()
 
+    // Thème (catégorie) affiché dans la colonne des chaînes, choisi dans une liste déroulante.
+    var sectionIndex by remember { mutableIntStateOf(0) }
+    var picking by remember { mutableStateOf(false) }
+    var refocusChannels by remember { mutableIntStateOf(0) }
+    val section = sections[sectionIndex.coerceIn(sections.indices)]
+    val sectionFirst = section.channels.first()
+    val pickerFocus = remember { FocusRequester() }
+    BackHandler(enabled = picking) { picking = false }
+    LaunchedEffect(picking) { if (picking) runCatching { pickerFocus.requestFocus() } }
+    LaunchedEffect(refocusChannels) { if (refocusChannels > 0) runCatching { firstChannelFocus.requestFocus() } }
+    val chooseSection: (Int) -> Unit = { i ->
+        sectionIndex = i
+        picking = false
+        focusedChannel = sections[i].channels.first()
+        refocusChannels++
+    }
+
+    val themeHeader: @Composable (Modifier) -> Unit = { m ->
+        FocusTile(
+            onClick = { picking = !picking },
+            modifier = m,
+            normalColor = C.Surface2,
+            focusScale = 1.02f,
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    section.title.uppercase(),
+                    Modifier.weight(1f).focusMarquee(),
+                    color = C.Accent,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(if (picking) "▲" else "▼", color = C.Accent, fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+
+    val themeItem: @Composable (Int, ReplaySection, Modifier) -> Unit = { i, s, m ->
+        FocusTile(
+            onClick = { chooseSection(i) },
+            modifier = m,
+            focusRequester = if (i == sectionIndex) pickerFocus else null,
+            selected = i == sectionIndex,
+            normalColor = C.Surface,
+            focusScale = 1.02f,
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    s.title.uppercase(),
+                    Modifier.weight(1f, fill = false).focusMarquee(),
+                    color = if (i == sectionIndex) C.Accent else C.Text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text("${s.channels.size}", color = C.TextDim, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+
     val channelList: @Composable (Modifier) -> Unit = { m ->
         if (compact) {
-            LazyRow(m, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                sections.forEach { s ->
-                    items(s.channels, key = { "c" + it.id }) { ch ->
-                        FocusTile(
-                            onClick = { focusedChannel = ch; channel = ch },
-                            focusRequester = if (ch == firstChannel) firstChannelFocus else null,
-                            selected = ch.id == channel.id,
-                            normalColor = C.Surface,
-                        ) {
-                            Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                ChannelLogo(ch, Modifier.size(42.dp, 28.dp))
-                                Text(ch.name, Modifier.padding(start = 8.dp).width(110.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Column(m) {
+                themeHeader(Modifier.fillMaxWidth().padding(bottom = 8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (picking) {
+                        sections.forEachIndexed { i, s -> item(key = "t$i") { themeItem(i, s, Modifier) } }
+                    } else {
+                        items(section.channels, key = { "c" + it.id }) { ch ->
+                            FocusTile(
+                                onClick = { focusedChannel = ch; channel = ch },
+                                focusRequester = if (ch == sectionFirst) firstChannelFocus else null,
+                                selected = ch.id == channel.id,
+                                normalColor = C.Surface,
+                            ) {
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    ChannelLogo(ch, Modifier.size(42.dp, 28.dp))
+                                    Text(ch.name, Modifier.padding(start = 8.dp).width(110.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }
                 }
             }
         } else {
-            LazyColumn(m, verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
-                sections.forEach { s ->
-                    item(key = "h" + s.title) {
-                        Text(
-                            s.title.uppercase(),
-                            Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp),
-                            color = if (s.title.startsWith("★")) C.Accent else C.TextDim,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    items(s.channels, key = { "c" + it.id }) { ch ->
-                        FocusTile(
-                            onClick = {
-                                focusedChannel = ch
-                                channel = ch
-                                runCatching { dayFocus.requestFocus() }
-                            },
-                            onFocus = { focusedChannel = ch },
-                            modifier = Modifier.fillMaxWidth(),
-                            focusRequester = if (ch == firstChannel) firstChannelFocus else null,
-                            selected = ch.id == focusedChannel.id,
-                            normalColor = C.Surface,
-                            focusScale = 1.02f,
-                        ) {
-                            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                ChannelLogo(ch, Modifier.size(48.dp, 32.dp))
-                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                    Text(ch.name, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    if (ch.archiveDays > 0) Text("${ch.archiveDays} jours", color = C.TextDim, fontSize = 11.sp)
+            Column(m) {
+                themeHeader(Modifier.fillMaxWidth().padding(bottom = 8.dp))
+                LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
+                    if (picking) {
+                        sections.forEachIndexed { i, s -> item(key = "t$i") { themeItem(i, s, Modifier.fillMaxWidth()) } }
+                    } else {
+                        items(section.channels, key = { "c" + it.id }) { ch ->
+                            FocusTile(
+                                onClick = {
+                                    focusedChannel = ch
+                                    channel = ch
+                                    runCatching { dayFocus.requestFocus() }
+                                },
+                                onFocus = { focusedChannel = ch },
+                                modifier = Modifier.fillMaxWidth(),
+                                focusRequester = if (ch == sectionFirst) firstChannelFocus else null,
+                                selected = ch.id == focusedChannel.id,
+                                normalColor = C.Surface,
+                                focusScale = 1.02f,
+                            ) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    ChannelLogo(ch, Modifier.size(48.dp, 32.dp))
+                                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                        Text(ch.name, Modifier.focusMarquee(), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                        if (ch.archiveDays > 0) Text("${ch.archiveDays} jours", color = C.TextDim, fontSize = 11.sp)
+                                    }
                                 }
                             }
                         }
