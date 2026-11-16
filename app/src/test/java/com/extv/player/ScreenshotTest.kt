@@ -72,7 +72,7 @@ class ScreenshotTest {
     @Test fun tvSeries() = shoot("tv_5_series", TV) { SeriesScreen(onOpen = {}) }
     @Test fun tvSeriesDetail() = shoot("tv_6_fiche_serie", TV) { SeriesDetailScreen() }
     @Test fun tvGuide() = shoot("tv_7_guide", TV) { GuideScreen() }
-    @Test fun tvReplay() = shoot("tv_8_replay", TV) { ReplayScreen(onChannel = {}) }
+    @Test fun tvReplay() = shoot("tv_8_replay", TV) { ReplayScreen() }
 
     @Test fun phoneHome() = shoot("phone_1_accueil", PHONE) { HomeScreen(onNavigate = {}, onSwitchProfile = {}) }
     @Test fun phoneLive() = shoot("phone_2_direct", PHONE) { LiveScreen() }
@@ -193,8 +193,22 @@ class FakeRepository : BaseRepository() {
         }
     }
 
-    override suspend fun catchup(channel: LiveChannel) = emptyList<EpgProgram>()
-    override fun catchupUrl(channel: LiveChannel, program: EpgProgram): String? = null
+    override suspend fun catchup(channel: LiveChannel): List<EpgProgram> {
+        val today = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val slots = listOf(6.5, 9.0, 12.0, 13.0, 14.0, 15.67, 17.5, 20.0, 21.08, 23.08)
+        val titles = listOf("Dessins animés du dimanche", "Cuisine en duel", "Le 12/13", "Le journal de 13 h", "Sport dimanche",
+            "Téléfilm : Un Noël à la montagne", "Les jeux du dimanche", "Le journal de 20 h", "Enquêtes au bord de l'eau", "Zone mystère")
+        return (0..3).flatMap { d ->
+            slots.indices.map { k ->
+                val start = today - d * 24 * H + (slots[k] * H).toLong()
+                val end = if (k < slots.lastIndex) today - d * 24 * H + (slots[k + 1] * H).toLong() else start + 70 * 60_000L
+                EpgProgram(titles[(k + d + channel.num) % titles.size], "Saison 3, épisode 4. Une disparition sur le port oblige le commandant à rouvrir une vieille affaire.", start, end)
+            }
+        }.filter { it.end < now }.sortedByDescending { it.start }
+    }
+    override fun catchupUrl(channel: LiveChannel, program: EpgProgram): String? = "http://exemple/replay.ts"
     override suspend fun accountInfo() = AccountInfo(true, "Active", now + 15 * 24 * H, 1, 2)
     override suspend fun refresh(type: ContentType) = Unit
     override fun loadedAt(type: ContentType): Long = now - 2 * 60_000

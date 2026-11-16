@@ -57,7 +57,6 @@ fun AppNav() {
     }
     val openMovie: (Movie) -> Unit = { Selection.movie = it; nav.navigate(Routes.MOVIE) }
     val openSeries: (Series) -> Unit = { Selection.series = it; nav.navigate(Routes.SERIES_DETAIL) }
-    val openCatchup: (LiveChannel) -> Unit = { Selection.channel = it; nav.navigate(Routes.CATCHUP) }
     val switchProfile = {
         app.store.activeProfileId = null
         app.resetRepository()
@@ -74,10 +73,9 @@ fun AppNav() {
             HomeScreen(onNavigate = { nav.navigate(it) }, onSwitchProfile = switchProfile)
         }
         composable(Routes.LIVE) { LiveScreen() }
-        composable(Routes.REPLAY) { ReplayScreen(onChannel = openCatchup) }
+        composable(Routes.REPLAY) { ReplayScreen() }
         composable(Routes.GUIDE) { GuideScreen() }
         composable(Routes.MULTI) { MultiScreen() }
-        composable(Routes.CATCHUP) { CatchupScreen() }
         composable(Routes.MOVIES) { MoviesScreen(onOpen = openMovie) }
         composable(Routes.MOVIE) { MovieDetailScreen() }
         composable(Routes.SERIES) { SeriesScreen(onOpen = openSeries) }
