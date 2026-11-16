@@ -404,6 +404,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             }
 
             Section("Lecteur")
+            // Libre d'accès (sans le code) : l'abonné qui n'a pas de son doit pouvoir changer la sortie audio seul.
+            SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
+                store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
+                changed()
+            }
             if (!playerUnlocked) {
                 SettingRow("Réglages du lecteur", "Protégé par un code", first) { askPlayerPin = true }
             } else {
@@ -421,10 +426,6 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 }
                 SettingRow("Mode sport", if (store.deinterlace) "Activé" else "Désactivé") {
                     store.deinterlace = !store.deinterlace
-                    changed()
-                }
-                SettingRow("Sortie audio VLC (si pas de son)", if (store.audioOutput == "opensles") "OpenSL ES" else "AudioTrack (par défaut)") {
-                    store.audioOutput = if (store.audioOutput == "opensles") "android_audiotrack" else "opensles"
                     changed()
                 }
                 SettingRow("Mémoire tampon réseau", "${store.networkCaching} ms") {
