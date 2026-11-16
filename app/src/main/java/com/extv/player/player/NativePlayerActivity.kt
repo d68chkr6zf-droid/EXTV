@@ -639,10 +639,11 @@ class NativePlayerActivity : ComponentActivity() {
     private val applyReplaySeek = Runnable {
         val target = pendingTarget ?: return@Runnable
         pendingTarget = null
-        playCurrent(target / 60_000 * 60_000)
+        playCurrent(target / 60_000 * 60_000, resume = false)
     }
 
-    private fun playCurrent(offset: Long = 0L) {
+    /** @param resume replay : sans [offset], repartir de la position enregistrée (reprise de lecture). */
+    private fun playCurrent(offset: Long = 0L, resume: Boolean = true) {
         handler.removeCallbacks(retryLive)
         handler.removeCallbacks(stuckLive)
         handler.removeCallbacks(applyReplaySeek)
@@ -653,17 +654,19 @@ class NativePlayerActivity : ComponentActivity() {
         subtitlesChosen = false
         subtitleView.setCues(emptyList())
         errorText = null
-        baseOffset = if (item.replayUrlAt != null) offset else 0L
-        timeMs = baseOffset
-        lengthMs = item.durationMs ?: 0
-        isBuffering = true
-
         val start = when {
             live -> 0L
             item.startAtMs != null -> item.startAtMs
             item.resumeKey != null -> store.position(item.resumeKey)
             else -> 0L
         }
+        // Replay : la reprise se fait en relançant le flux à la minute enregistrée.
+        val replayStart = if (resume && offset == 0L) start / 60_000 * 60_000 else offset
+        baseOffset = if (item.replayUrlAt != null) replayStart else 0L
+        timeMs = baseOffset
+        lengthMs = item.durationMs ?: 0
+        isBuffering = true
+
         items[index] = item.copy(startAtMs = null)
         if (item.historyType != null && item.historyId != null) {
             store.addHistory(item.historyType, item.historyId)
@@ -728,10 +731,13 @@ class NativePlayerActivity : ComponentActivity() {
     private fun savePosition() {
         val p = player ?: return
         if (live) return
-        val key = items.getOrNull(index)?.resumeKey ?: return
-        val length = p.duration
+        val item = items.getOrNull(index) ?: return
+        val key = item.resumeKey ?: return
+        // Replay : position dans l'émission (le flux en cours démarre à baseOffset).
+        val replay = item.replayUrlAt != null
+        val length = if (replay) lengthMs else p.duration
         if (length == MC.TIME_UNSET || length <= 0) return
-        val pos = p.currentPosition
+        val pos = if (replay) timeMs else p.currentPosition
         store.savePosition(key, if (pos > length * 0.95 || pos < 10_000) 0L else pos)
     }
 

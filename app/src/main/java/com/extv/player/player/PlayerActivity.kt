@@ -267,10 +267,11 @@ class PlayerActivity : ComponentActivity() {
     private val applyReplaySeek = Runnable {
         val target = pendingTarget ?: return@Runnable
         pendingTarget = null
-        playCurrent(target / 60_000 * 60_000)
+        playCurrent(target / 60_000 * 60_000, resume = false)
     }
 
-    private fun playCurrent(offset: Long = 0L) {
+    /** @param resume replay : sans [offset], repartir de la position enregistrée (reprise de lecture). */
+    private fun playCurrent(offset: Long = 0L, resume: Boolean = true) {
         handler.removeCallbacks(retryLive)
         handler.removeCallbacks(applyReplaySeek)
         handler.removeCallbacks(watchLive)
@@ -285,7 +286,14 @@ class PlayerActivity : ComponentActivity() {
         frenchChosen = false
         subtitlesChosen = false
         errorText = null
-        baseOffset = if (item.replayUrlAt != null) offset else 0L
+        // Replay : la reprise se fait en relançant le flux à la minute enregistrée.
+        val saved = when {
+            item.startAtMs != null -> item.startAtMs
+            item.resumeKey != null -> store.position(item.resumeKey)
+            else -> 0L
+        }
+        val replayStart = if (resume && offset == 0L && !live) saved / 60_000 * 60_000 else offset
+        baseOffset = if (item.replayUrlAt != null) replayStart else 0L
         timeMs = baseOffset
         lengthMs = item.durationMs ?: 0
         isBuffering = true
@@ -309,6 +317,8 @@ class PlayerActivity : ComponentActivity() {
 
         pendingSeek = when {
             live -> 0L
+            // Replay : le flux démarre déjà à la bonne minute (baseOffset), pas de saut dans le flux.
+            item.replayUrlAt != null -> 0L
             item.startAtMs != null -> item.startAtMs
             item.resumeKey != null -> store.position(item.resumeKey)
             else -> 0L
@@ -471,10 +481,12 @@ class PlayerActivity : ComponentActivity() {
 
     private fun savePosition() {
         if (live || !::mediaPlayer.isInitialized) return
-        val key = items.getOrNull(index)?.resumeKey ?: return
+        val item = items.getOrNull(index) ?: return
+        val key = item.resumeKey ?: return
         val length = lengthMs
         if (length <= 0) return
-        val pos = mediaPlayer.time
+        // Replay : position dans l'émission (le flux en cours démarre à baseOffset).
+        val pos = if (item.replayUrlAt != null) timeMs else mediaPlayer.time
         store.savePosition(key, if (pos > length * 0.95 || pos < 10_000) 0L else pos)
     }
 
