@@ -333,6 +333,7 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var info by remember { mutableStateOf<String?>(null) }
     var keyDiagnostic by remember { mutableStateOf(false) }
     var supportInfo by remember { mutableStateOf<String?>(null) }
+    var askAnyDesk by remember { mutableStateOf(false) }
     var anydeskInstalled by remember { mutableStateOf(RemoteSupport.isInstalled(App.instance)) }
     // Retour du Play Store ou d'AnyDesk : « Installer AnyDesk » devient « Ouvrir ».
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { anydeskInstalled = RemoteSupport.isInstalled(App.instance) }
@@ -400,7 +401,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             Section("Assistance")
             // Ouvre AnyDesk pour que l'installateur prenne la main à distance (ou propose de l'installer).
             SettingRow("Assistance à distance (AnyDesk)", if (anydeskInstalled) "Ouvrir" else "Installer AnyDesk") {
-                supportInfo = RemoteSupport.open(context)
+                if (RemoteSupport.launch(context)) {
+                    supportInfo = "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
+                } else {
+                    askAnyDesk = true
+                }
             }
             supportInfo?.let { Text(it, color = C.Accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 
@@ -512,6 +517,16 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         }
     }
 
+    if (askAnyDesk) {
+        AnyDeskInstallDialog(
+            onDismiss = { askAnyDesk = false },
+            onInstalled = {
+                askAnyDesk = false
+                anydeskInstalled = true
+                supportInfo = "AnyDesk est installé. Appuyez sur « Assistance à distance » pour l'ouvrir."
+            },
+        )
+    }
     if (askPlayerPin) {
         PinDialog(
             title = "Code des réglages du lecteur",
