@@ -49,6 +49,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -731,17 +739,39 @@ fun SeriesDetailScreen() {
 
             val gridState = rememberLazyGridState()
             val scope = rememberCoroutineScope()
-            // Quand le focus arrive sur la dernière (ou la première) rangée d'épisodes visible, la grille
-            // avance d'un peu plus d'une demi-tuile pour faire apparaître la rangée suivante. Sans ça,
-            // si la rangée d'en dessous n'est pas encore à l'écran, la flèche Bas ne trouve rien et la
-            // liste reste bloquée sur les premiers épisodes (ex. 8 épisodes sur 20).
-            fun revealNeighbourRows(index: Int) = scope.launch {
+            val focusManager = LocalFocusManager.current
+            val epFocus = remember(season, episodes.size) { List(episodes.size) { FocusRequester() } }
+            val gridSpacing = with(LocalDensity.current) { 8.dp.toPx() }
+            // Flèches Haut/Bas sur les épisodes gérées ici plutôt que par la recherche de focus de Compose :
+            // la grille ne crée que les rangées à l'écran, et la flèche Bas ne trouvait pas la rangée suivante
+            // (bloquée sur les 8 premiers épisodes). On fait d'abord défiler la grille d'une rangée si
+            // l'épisode visé n'est pas encore là, puis on lui donne le focus directement.
+            fun moveEpisode(from: Int, down: Boolean): Boolean {
                 val visible = gridState.layoutInfo.visibleItemsInfo
-                val me = visible.firstOrNull { it.index == index } ?: return@launch
                 val columns = (visible.maxOfOrNull { it.column } ?: 0) + 1
-                val step = me.size.height * 0.6f
-                if (index + columns > visible.last().index && gridState.canScrollForward) gridState.scrollBy(step)
-                else if (maxOf(index - columns, 1) < visible.first().index && gridState.canScrollBackward) gridState.scrollBy(-step)
+                val target = when {
+                    down && from + columns < episodes.size -> from + columns
+                    // Dernière rangée incomplète : on va sur le dernier épisode.
+                    down && from / columns < (episodes.size - 1) / columns -> episodes.size - 1
+                    down -> return true // déjà sur la dernière rangée
+                    from - columns >= 0 -> from - columns
+                    else -> -1 // première rangée : on remonte vers les saisons
+                }
+                scope.launch {
+                    val step = (visible.firstOrNull { it.index == from + 2 }?.size?.height ?: 200) + gridSpacing
+                    val wanted = if (target >= 0) target + 2 else 1 // 2 = en-tête + rangée des saisons
+                    if (gridState.layoutInfo.visibleItemsInfo.none { it.index == wanted }) {
+                        gridState.scrollBy(if (down) step else -step)
+                        withFrameNanos { }
+                        if (gridState.layoutInfo.visibleItemsInfo.none { it.index == wanted }) {
+                            gridState.scrollToItem(wanted)
+                            withFrameNanos { }
+                        }
+                    }
+                    if (target >= 0) runCatching { epFocus[target].requestFocus() }
+                    else focusManager.moveFocus(FocusDirection.Up)
+                }
+                return true
             }
 
             LazyVerticalGrid(
@@ -806,8 +836,15 @@ fun SeriesDetailScreen() {
                     val pos = remember(refresh, resumeKey) { app.store.position(resumeKey) }
                     FocusTile(
                         onClick = { playEpisode(ep) },
-                        onFocus = { revealNeighbourRows(i + 2) }, // 2 = en-tête + rangée des saisons
-                        modifier = Modifier.fillMaxWidth(),
+                        focusRequester = epFocus.getOrNull(i),
+                        modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { e ->
+                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (e.key) {
+                                Key.DirectionDown -> moveEpisode(i, down = true)
+                                Key.DirectionUp -> moveEpisode(i, down = false)
+                                else -> false
+                            }
+                        },
                         normalColor = Color(0xCC17151C),
                         focusScale = 1.02f,
                     ) {
