@@ -54,6 +54,7 @@ import com.extv.player.data.LiveChannel
 import com.extv.player.data.LocalStore
 import com.extv.player.data.Movie
 import com.extv.player.data.ProfileType
+import com.extv.player.data.RemoteSupport
 import com.extv.player.data.Series
 import com.extv.player.data.searchVisible
 import com.extv.player.player.PlayQueue
@@ -331,6 +332,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var newStartPin by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var keyDiagnostic by remember { mutableStateOf(false) }
+    var supportInfo by remember { mutableStateOf<String?>(null) }
+    var anydeskInstalled by remember { mutableStateOf(RemoteSupport.isInstalled(App.instance)) }
+    // Retour du Play Store ou d'AnyDesk : « Installer AnyDesk » devient « Ouvrir ».
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { anydeskInstalled = RemoteSupport.isInstalled(App.instance) }
     // Section « Lecteur » cachée derrière un code ; déverrouillée jusqu'à la sortie des Paramètres.
     var playerUnlocked by remember { mutableStateOf(false) }
     var askPlayerPin by remember { mutableStateOf(false) }
@@ -391,6 +396,13 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 a.expDate?.let { InfoRow("Expiration", formatDate(it)) }
                 a.maxConnections?.let { InfoRow("Connexions", "${a.activeConnections ?: 0} / $it") }
             }
+
+            Section("Assistance")
+            // Ouvre AnyDesk pour que l'installateur prenne la main à distance (ou propose de l'installer).
+            SettingRow("Assistance à distance (AnyDesk)", if (anydeskInstalled) "Ouvrir" else "Installer AnyDesk") {
+                supportInfo = RemoteSupport.open(context)
+            }
+            supportInfo?.let { Text(it, color = C.Accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 
             Section("Application")
             InfoRow("Version installée", Updater.currentVersion)
