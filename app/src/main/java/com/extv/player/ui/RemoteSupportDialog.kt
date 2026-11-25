@@ -112,7 +112,7 @@ fun AssistanceSetupDialog(onDismiss: () -> Unit, onReady: () -> Unit) {
                             "Étape 2 sur 3 : il faut « AnyDesk Control Plugin », le module qui permet à votre installateur " +
                                 "de piloter le boîtier (et pas seulement de voir l'écran)."
                         Step.ACCESSIBILITY ->
-                            "Étape 3 sur 3 : activez le module de contrôle. Sur la télécommande :\n" +
+                            "Étape 3 sur 3 : activez le module de contrôle. Notez ce chemin avant de continuer :\n" +
                                 "1. Réglages > Préférences relatives à l'appareil\n" +
                                 "2. Descendez jusqu'à Accessibilité\n" +
                                 "3. Choisissez « AnyDesk Control Service », puis activez-le et acceptez\n" +
