@@ -333,9 +333,9 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var keyDiagnostic by remember { mutableStateOf(false) }
     var supportInfo by remember { mutableStateOf<String?>(null) }
     var askAnyDesk by remember { mutableStateOf(false) }
-    var anydeskInstalled by remember { mutableStateOf(RemoteSupport.isInstalled(App.instance)) }
-    // Retour du Play Store ou d'AnyDesk : « Installer AnyDesk » devient « Ouvrir ».
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { anydeskInstalled = RemoteSupport.isInstalled(App.instance) }
+    var assistanceReady by remember { mutableStateOf(RemoteSupport.nextStep(App.instance) == RemoteSupport.Step.READY) }
+    // Retour d'une installation : « À préparer » devient « Ouvrir ».
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { assistanceReady = RemoteSupport.nextStep(App.instance) == RemoteSupport.Step.READY }
     // Section « Lecteur » cachée derrière un code ; déverrouillée jusqu'à la sortie des Paramètres.
     var playerUnlocked by remember { mutableStateOf(false) }
     var askPlayerPin by remember { mutableStateOf(false) }
@@ -402,8 +402,8 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
 
             Section("Assistance")
             // Ouvre AnyDesk pour que l'installateur prenne la main à distance (ou propose de l'installer).
-            SettingRow("Assistance à distance (AnyDesk)", if (anydeskInstalled) "Ouvrir" else "Installer AnyDesk") {
-                if (RemoteSupport.launch(context)) {
+            SettingRow("Assistance à distance (AnyDesk)", if (assistanceReady) "Ouvrir" else "À préparer") {
+                if (openAssistance(context)) {
                     supportInfo = "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
                 } else {
                     askAnyDesk = true
@@ -520,19 +520,20 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     }
 
     if (askAnyDesk) {
-        AnyDeskInstallDialog(
+        AssistanceSetupDialog(
             onDismiss = { askAnyDesk = false },
-            onInstalled = {
+            onReady = {
                 askAnyDesk = false
-                anydeskInstalled = true
+                assistanceReady = true
                 supportInfo = if (RemoteSupport.launch(context)) {
                     "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
                 } else {
-                    "AnyDesk est installé. Appuyez sur « Assistance à distance » pour l'ouvrir."
+                    "Tout est prêt. Appuyez sur « Assistance à distance » pour ouvrir AnyDesk."
                 }
             },
         )
     }
+
     if (askPlayerPin) {
         PinDialog(
             title = "Code des réglages du lecteur",
