@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -728,7 +729,23 @@ fun SeriesDetailScreen() {
                 PlayQueue.start(context, queue, list.indexOf(ep).coerceAtLeast(0), live = false)
             }
 
+            val gridState = rememberLazyGridState()
+            val scope = rememberCoroutineScope()
+            // Quand le focus arrive sur la dernière (ou la première) rangée d'épisodes visible, la grille
+            // avance d'un peu plus d'une demi-tuile pour faire apparaître la rangée suivante. Sans ça,
+            // si la rangée d'en dessous n'est pas encore à l'écran, la flèche Bas ne trouve rien et la
+            // liste reste bloquée sur les premiers épisodes (ex. 8 épisodes sur 20).
+            fun revealNeighbourRows(index: Int) = scope.launch {
+                val visible = gridState.layoutInfo.visibleItemsInfo
+                val me = visible.firstOrNull { it.index == index } ?: return@launch
+                val columns = (visible.maxOfOrNull { it.column } ?: 0) + 1
+                val step = me.size.height * 0.6f
+                if (index + columns > visible.last().index && gridState.canScrollForward) gridState.scrollBy(step)
+                else if (maxOf(index - columns, 1) < visible.first().index && gridState.canScrollBackward) gridState.scrollBy(-step)
+            }
+
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Adaptive(if (compact) 300.dp else 380.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(screenPadding()),
@@ -789,6 +806,7 @@ fun SeriesDetailScreen() {
                     val pos = remember(refresh, resumeKey) { app.store.position(resumeKey) }
                     FocusTile(
                         onClick = { playEpisode(ep) },
+                        onFocus = { revealNeighbourRows(i + 2) }, // 2 = en-tête + rangée des saisons
                         modifier = Modifier.fillMaxWidth(),
                         normalColor = Color(0xCC17151C),
                         focusScale = 1.02f,
