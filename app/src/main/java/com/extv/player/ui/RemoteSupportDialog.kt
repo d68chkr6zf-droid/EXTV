@@ -88,7 +88,7 @@ fun AssistanceSetupDialog(onDismiss: () -> Unit, onReady: () -> Unit) {
             Step.PLUGIN -> startPlugin()
             Step.ACCESSIBILITY -> {
                 if (!RemoteSupport.openAccessibility(context)) {
-                    message = "Ouvrez Paramètres > Accessibilité sur le boîtier et activez « AnyDesk Control Plugin »."
+                    message = "Ouvrez Réglages > Préférences relatives à l'appareil > Accessibilité, puis activez « AnyDesk Control Service »."
                 }
             }
             Step.READY -> onReady()
@@ -112,8 +112,11 @@ fun AssistanceSetupDialog(onDismiss: () -> Unit, onReady: () -> Unit) {
                             "Étape 2 sur 3 : il faut « AnyDesk Control Plugin », le module qui permet à votre installateur " +
                                 "de piloter le boîtier (et pas seulement de voir l'écran)."
                         Step.ACCESSIBILITY ->
-                            "Étape 3 sur 3 : dans la page qui va s'ouvrir, choisissez « AnyDesk Control Plugin » " +
-                                "(parfois dans « Services » ou « Applications téléchargées »), activez-le et acceptez. " +
+                            "Étape 3 sur 3 : activez le module de contrôle. Sur la télécommande :\n" +
+                                "1. Réglages > Préférences relatives à l'appareil\n" +
+                                "2. Descendez jusqu'à Accessibilité\n" +
+                                "3. Choisissez « AnyDesk Control Service », puis activez-le et acceptez\n" +
+                                "Le bouton « Ouvrir Accessibilité » y mène directement sur la plupart des boîtiers. " +
                                 "Revenez ensuite dans EXTV avec la touche Retour."
                         Step.READY -> "Tout est prêt."
                     },
