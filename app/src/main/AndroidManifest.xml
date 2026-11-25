@@ -19,6 +19,11 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Android 11+ : voir si AnyDesk est installé (bouton « Assistance à distance »). -->
+    <queries>
+        <package android:name="com.anydesk.anydeskandroid" />
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="true"

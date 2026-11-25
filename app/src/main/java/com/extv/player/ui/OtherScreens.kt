@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +53,7 @@ import com.extv.player.data.LiveChannel
 import com.extv.player.data.LocalStore
 import com.extv.player.data.Movie
 import com.extv.player.data.ProfileType
+import com.extv.player.data.RemoteSupport
 import com.extv.player.data.Series
 import com.extv.player.data.searchVisible
 import com.extv.player.player.PlayQueue
@@ -331,6 +331,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
     var newStartPin by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var keyDiagnostic by remember { mutableStateOf(false) }
+    var supportInfo by remember { mutableStateOf<String?>(null) }
+    var askAnyDesk by remember { mutableStateOf(false) }
+    var anydeskInstalled by remember { mutableStateOf(RemoteSupport.isInstalled(App.instance)) }
+    // Retour du Play Store ou d'AnyDesk : « Installer AnyDesk » devient « Ouvrir ».
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { anydeskInstalled = RemoteSupport.isInstalled(App.instance) }
     // Section « Lecteur » cachée derrière un code ; déverrouillée jusqu'à la sortie des Paramètres.
     var playerUnlocked by remember { mutableStateOf(false) }
     var askPlayerPin by remember { mutableStateOf(false) }
@@ -383,7 +388,10 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
 
     Column(Modifier.fillMaxSize().padding(screenPadding()).verticalScroll(rememberScrollState())) {
         ScreenTitle("Paramètres · version ${Updater.currentVersion}")
-        key(tick) {
+        // Pas de key(tick) ici : cela recréait toutes les lignes à chaque OK et la sélection repartait en haut.
+        // Lire tick suffit à réafficher les nouvelles valeurs en gardant la ligne active et le défilement.
+        run {
+            check(tick >= 0)
             Section("Compte")
             InfoRow("Compte", profile?.name ?: "-")
             account.value?.let { a ->
@@ -391,6 +399,17 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
                 a.expDate?.let { InfoRow("Expiration", formatDate(it)) }
                 a.maxConnections?.let { InfoRow("Connexions", "${a.activeConnections ?: 0} / $it") }
             }
+
+            Section("Assistance")
+            // Ouvre AnyDesk pour que l'installateur prenne la main à distance (ou propose de l'installer).
+            SettingRow("Assistance à distance (AnyDesk)", if (anydeskInstalled) "Ouvrir" else "Installer AnyDesk") {
+                if (RemoteSupport.launch(context)) {
+                    supportInfo = "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
+                } else {
+                    askAnyDesk = true
+                }
+            }
+            supportInfo?.let { Text(it, color = C.Accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
 
             Section("Application")
             InfoRow("Version installée", Updater.currentVersion)
@@ -500,6 +519,20 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
         }
     }
 
+    if (askAnyDesk) {
+        AnyDeskInstallDialog(
+            onDismiss = { askAnyDesk = false },
+            onInstalled = {
+                askAnyDesk = false
+                anydeskInstalled = true
+                supportInfo = if (RemoteSupport.launch(context)) {
+                    "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
+                } else {
+                    "AnyDesk est installé. Appuyez sur « Assistance à distance » pour l'ouvrir."
+                }
+            },
+        )
+    }
     if (askPlayerPin) {
         PinDialog(
             title = "Code des réglages du lecteur",
