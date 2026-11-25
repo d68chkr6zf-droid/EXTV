@@ -253,14 +253,15 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     val activity = context as? Activity
     var askAnyDesk by remember { mutableStateOf(false) }
     if (askAnyDesk) {
-        AnyDeskInstallDialog(
+        AssistanceSetupDialog(
             onDismiss = { askAnyDesk = false },
-            onInstalled = {
+            onReady = {
                 askAnyDesk = false
                 RemoteSupport.launch(context)
             },
         )
     }
+
     val scope = rememberCoroutineScope()
     val size = windowSize()
     val compact = size == WindowSize.Compact
@@ -408,7 +409,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             onProfiles = onSwitchProfile,
             onSettings = { onNavigate(Routes.SETTINGS) },
             onExit = { activity?.finish() },
-            onSupport = { if (!RemoteSupport.launch(context)) askAnyDesk = true },
+            onSupport = { if (!openAssistance(context)) askAnyDesk = true },
         )
         Spacer(Modifier.height(if (compact || config.screenHeightDp < 500) 14.dp else 24.dp))
         if (grid) {
@@ -462,29 +463,35 @@ private fun TopBar(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ExtvLogo(if (compact) 26.sp else 32.sp)
         if (!compact) {
+            // Prend la place libre et se raccourcit (…) plutôt que de toucher les boutons de droite.
             Text(
                 "${formatHour(now)}   ${formatLongDate(now)}",
                 fontSize = 17.sp,
                 color = C.TextDim,
-                modifier = Modifier.padding(start = 32.dp),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 32.dp, end = 16.dp),
             )
+        } else {
+            Spacer(Modifier.weight(1f))
         }
-        Spacer(Modifier.weight(1f))
         if (users != null) {
             // Nombre d'appareils qui utilisent l'abonnement : cet appareil + ceux qui regardent ailleurs.
             val over = maxUsers != null && users > maxUsers
             Row(
                 Modifier.clip(RoundedCornerShape(24.dp))
                     .background(if (over) Color(0xFF8B1A1A) else C.Surface2)
-                    .padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 11.dp),
+                    .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = if (compact) 6.dp else 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Person, contentDescription = null, tint = if (over) Color.White else C.TextDim, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Person, contentDescription = null, tint = if (over) Color.White else C.TextDim, modifier = Modifier.size(16.dp))
                 Text(
                     if (users > 1) "$users utilisateurs" else "1 utilisateur",
                     color = if (over) Color.White else C.TextDim,
+                    fontSize = 14.sp,
                     fontWeight = if (over) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.padding(start = 8.dp),
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 6.dp),
                 )
             }
             Spacer(Modifier.width(if (compact) 8.dp else 16.dp))
