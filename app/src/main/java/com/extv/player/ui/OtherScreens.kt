@@ -525,7 +525,11 @@ fun SettingsScreen(onLockedCategories: () -> Unit, onSwitchProfile: () -> Unit) 
             onInstalled = {
                 askAnyDesk = false
                 anydeskInstalled = true
-                supportInfo = "AnyDesk est installé. Appuyez sur « Assistance à distance » pour l'ouvrir."
+                supportInfo = if (RemoteSupport.launch(context)) {
+                    "AnyDesk s'ouvre : donnez à votre installateur le numéro à 9 chiffres affiché, puis acceptez sa demande."
+                } else {
+                    "AnyDesk est installé. Appuyez sur « Assistance à distance » pour l'ouvrir."
+                }
             },
         )
     }

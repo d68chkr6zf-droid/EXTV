@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.extv.player.App
+import com.extv.player.data.RemoteSupport
 import com.extv.player.BuildConfig
 import com.extv.player.R
 import com.extv.player.data.ContentType
@@ -247,7 +249,18 @@ private class CatalogStatus(val count: Int? = null, val loading: Boolean = true,
 fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
     val app = App.instance
     val repo = app.repository() ?: return
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var askAnyDesk by remember { mutableStateOf(false) }
+    if (askAnyDesk) {
+        AnyDeskInstallDialog(
+            onDismiss = { askAnyDesk = false },
+            onInstalled = {
+                askAnyDesk = false
+                RemoteSupport.launch(context)
+            },
+        )
+    }
     val scope = rememberCoroutineScope()
     val size = windowSize()
     val compact = size == WindowSize.Compact
@@ -306,7 +319,6 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
         SmallTile("Replay", R.drawable.ic_replay, m) { onNavigate(Routes.REPLAY) }
     }
     // --- Sauvegarde / réintégration des favoris sur le boîtier ---
-    val context = LocalContext.current
     val toast = rememberToast()
     fun backupFavorites() {
         runCatching {
@@ -396,6 +408,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onSwitchProfile: () -> Unit) {
             onProfiles = onSwitchProfile,
             onSettings = { onNavigate(Routes.SETTINGS) },
             onExit = { activity?.finish() },
+            onSupport = { if (!RemoteSupport.launch(context)) askAnyDesk = true },
         )
         Spacer(Modifier.height(if (compact || config.screenHeightDp < 500) 14.dp else 24.dp))
         if (grid) {
@@ -444,6 +457,7 @@ private fun TopBar(
     onProfiles: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onSupport: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ExtvLogo(if (compact) 26.sp else 32.sp)
@@ -487,6 +501,24 @@ private fun TopBar(
         if (!compact) {
             Spacer(Modifier.width(gap))
             RoundIconButton(Icons.Default.ExitToApp, "Quitter", btn, onExit)
+        }
+        Spacer(Modifier.width(gap))
+        SupportButton(compact, btn, onSupport)
+    }
+}
+
+/** Bouton « Assistance » en haut à droite : ouvre AnyDesk pour une aide à distance (ou propose de l'installer). */
+@Composable
+private fun SupportButton(compact: Boolean, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    FocusTile(onClick = onClick, modifier = Modifier.height(size), shape = RoundedCornerShape(size / 2), normalColor = C.Surface2, focusScale = 1.08f) { focused ->
+        Row(
+            Modifier.align(Alignment.Center).padding(horizontal = if (compact) 10.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Call, contentDescription = "Assistance à distance", tint = C.Accent, modifier = Modifier.size(size * 0.42f))
+            if (!compact) {
+                Text("Assistance", color = if (focused) C.Text else C.TextDim, modifier = Modifier.padding(start = 8.dp), maxLines = 1)
+            }
         }
     }
 }
