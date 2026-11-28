@@ -254,14 +254,55 @@ def box_office_page(url):
     return out
 
 
+AFFICHE = "https://www.allocine.fr/film/aucinema/"
+AFFICHE_PAGES = 8   # 15 films par page, les plus populaires d'abord
+AFFICHE_MAX = 99    # rangs 21 à 99 : l'appli les traite comme « cette semaine », dans l'ordre (rang < 100)
+TITLE_LINK = re.compile(r'<a[^>]+class="[^"]*meta-title-link[^"]*"[^>]+href="(?:https://www\.allocine\.fr)?/film/fichefilm_gen_cfilm=(\d+)\.html"[^>]*>(.*?)</a>'
+                        r'|<a[^>]+href="(?:https://www\.allocine\.fr)?/film/fichefilm_gen_cfilm=(\d+)\.html"[^>]+class="[^"]*meta-title-link[^"]*"[^>]*>(.*?)</a>', re.S)
+
+
+def affiche_page(url):
+    """Films à l'affiche d'une page AlloCiné (ceux qui passent en salle cette semaine), dans l'ordre de la page."""
+    try:
+        page = get(url, UA_BROWSER, 60).decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        print(f"films à l'affiche indisponibles {url} : {e}", file=sys.stderr)
+        return []
+    out = []
+    for a, b, c, d in TITLE_LINK.findall(page):
+        fid, raw = (a, b) if a else (c, d)
+        title = html.unescape(TAG.sub("", raw)).strip()
+        if title:
+            out.append((fid, title))
+    return out
+
+
 def cinema():
     """Films en salle en France, titres français d'AlloCiné : le box-office de la semaine dans l'ordre (rang 1 à 20),
+    puis les autres films à l'affiche cette semaine, les plus populaires d'abord (rang 21 à 99),
     puis les films classés les semaines précédentes, du plus récent au plus ancien (rang 101 et suivants)."""
     out, seen = [], set()
     year = time.gmtime().tm_year
     for fid, title in box_office_page(BOX_OFFICE):
         seen.add(fid)
         out.append({"kind": "CINEMA", "rank": len(out) + 1, "title": title, "alt": [], "year": year})
+    # Films à l'affiche (ex. « Street Fighter », sorti il y a 6 semaines et sorti du top 20 du box-office mais
+    # toujours en salle) : ils doivent passer avant les films qui ne sont plus au cinéma.
+    rank = max(20, len(out))
+    for n in range(1, AFFICHE_PAGES + 1):
+        films = affiche_page(AFFICHE if n == 1 else f"{AFFICHE}?page={n}")
+        if not films:
+            break
+        for fid, title in films:
+            if fid in seen or rank >= AFFICHE_MAX:
+                continue
+            seen.add(fid)
+            rank += 1
+            out.append({"kind": "CINEMA", "rank": rank, "title": title, "alt": [], "year": year})
+        if rank >= AFFICHE_MAX:
+            break
+        time.sleep(0.5)
+    print(f"Films à l'affiche : {rank - 20 if rank > 20 else 0} en plus du box-office")
     # Semaines AlloCiné : du mercredi au mardi, adresse /sem-AAAA-MM-JJ/ (date du mercredi).
     today = time.time()
     wd = time.gmtime(today).tm_wday  # lundi = 0, mercredi = 2
