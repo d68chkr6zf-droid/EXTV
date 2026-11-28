@@ -206,17 +206,24 @@ private suspend fun <T> IptvRepository.top10Of(
         val cinemaKind = com.extv.player.data.NetflixTop10.Kind.CINEMA
         // Des films récents (« VOD Récemment ajouté » et Tendance), jamais un vieux film (« L'aile ou la cuisse » 1976 écarté
         // même s'il est dans le classement Netflix), dans cet ordre de priorité :
-        // 1) cinéma : box-office de la semaine dans l'ordre, puis les films sortis en salle ces 6 derniers mois
+        // 1) cinéma : box-office de la semaine dans l'ordre, puis les autres films à l'affiche (les plus vus d'abord),
+        //    puis les films sortis en salle ces 6 derniers mois
         //    (« L'Odyssée », sorti en juillet), les mieux notés d'abord ;
         // 2) films les plus regardés sur Netflix en ce moment ;
         // 3) films récents des « Tendance sur … » (Netflix, Prime Video, HBO, Disney+, Apple TV+), à tour de rôle.
         fun ranked(list: List<T>) = list.filter { (rating(it) ?: 10.0) >= 5.0 }
             .sortedWith(compareByDescending<T> { dateOf(it)?.take(4) ?: "" }.thenByDescending { rating(it) ?: 6.0 }.thenByDescending { dateOf(it) ?: "" })
         val cinemaEntries = entries.filter { it.kind == cinemaKind }
-        val (thisWeek, earlier) = cinemaEntries.partition { it.rank < 100 }
+        // Rangs 1 à 999 : films à l'affiche cette semaine (box-office puis autres films en salle), dans l'ordre.
+        // Rangs 1001 et suivants : films sortis ces 6 derniers mois mais plus en salle, classés par note.
+        val (thisWeek, earlier) = cinemaEntries.partition { it.rank < 1000 }
+        // Films à l'affiche cherchés dans tout l'abonnement (« Street Fighter (2026) » rangé ailleurs que dans
+        // « VOD Récemment ajouté »), mais seulement parmi les films de cette année ou de l'an dernier : jamais
+        // l'homonyme ancien (« Street Fighter : L'Ultime combat (1994) »).
+        val cinemaPool = (recent + all.filter { (year(it) ?: 0) >= thisYear - 1 }).distinct()
         val boxOffice = withContext(Dispatchers.Default) {
-            val now = if (thisWeek.isEmpty()) emptyList() else com.extv.player.data.NetflixTop10.match(cinemaKind, thisWeek, recent, name, year, recent)
-            val before = if (earlier.isEmpty()) emptyList() else com.extv.player.data.NetflixTop10.match(cinemaKind, earlier, recent.filter { it !in now }, name, year, recent.filter { it !in now })
+            val now = if (thisWeek.isEmpty()) emptyList() else com.extv.player.data.NetflixTop10.match(cinemaKind, thisWeek, cinemaPool, name, year, recent)
+            val before = if (earlier.isEmpty()) emptyList() else com.extv.player.data.NetflixTop10.match(cinemaKind, earlier, cinemaPool.filter { it !in now }, name, year, recent.filter { it !in now })
             now + before.filter { (rating(it) ?: 10.0) >= 5.0 }.sortedByDescending { rating(it) ?: 6.0 }
         }
         val netflixNow = entries.filter { it.kind == com.extv.player.data.NetflixTop10.Kind.FILMS && (it.year == null || it.year >= thisYear - 1) }
