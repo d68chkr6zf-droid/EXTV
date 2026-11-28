@@ -185,14 +185,15 @@ private suspend fun <T> IptvRepository.top10Of(
         if (entries.isEmpty()) emptyList() else Top.match(kind, entries, all, name, year, netflixTrending)
     } + netflixTrending
     val cinema = if (kind != com.extv.player.data.NetflixTop10.Kind.FILMS) emptyList() else {
-        // Films au cinéma : pris dans la catégorie « VOD Récemment ajouté » du serveur (là où le fournisseur met
-        // les sorties récentes). Sans cette catégorie : nouveautés du serveur, « Récemment ajouté » et films de l'année.
+        // Films au cinéma : pris dans « VOD Récemment ajouté » et toutes les autres catégories « Récemment ajouté »
+        // du serveur, plus « Récemment ajouté » de l'appli (les 100 derniers films ajoutés à l'abonnement).
+        // Sans ces catégories du serveur : nouveautés du serveur, « Récemment ajouté » et films de l'année.
         val cats = runCatching { categories(type) }.getOrDefault(emptyList()).filter { !App.instance.parental.isLocked(it) }
         val vodRecent = cats.filter { it.name.normalized().let { n -> n.contains("recemment") || n.contains("recent") } }
-            .sortedBy { if (it.name.normalized().contains("vod")) 0 else 1 }.take(1)
+            .sortedBy { if (it.name.normalized().contains("vod")) 0 else 1 }
         val thisYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         val pool = if (vodRecent.isNotEmpty()) {
-            itemsIn(vodRecent[0].id)
+            (vodRecent.flatMap { itemsIn(it.id) } + itemsIn(Category.RECENT)).distinct()
         } else {
             (cats.filter { isRecentCategory(it.name) }.flatMap { itemsIn(it.id) } + itemsIn(Category.RECENT) +
                 all.filter { year(it)?.let { y -> y >= thisYear - 1 } == true }).distinct()
