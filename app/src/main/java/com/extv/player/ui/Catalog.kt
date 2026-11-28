@@ -214,7 +214,9 @@ private suspend fun <T> IptvRepository.top10Of(
         fun ranked(list: List<T>) = list.filter { (rating(it) ?: 10.0) >= 5.0 }
             .sortedWith(compareByDescending<T> { dateOf(it)?.take(4) ?: "" }.thenByDescending { rating(it) ?: 6.0 }.thenByDescending { dateOf(it) ?: "" })
         val cinemaEntries = entries.filter { it.kind == cinemaKind }
-        val (thisWeek, earlier) = cinemaEntries.partition { it.rank < 100 }
+        // Rangs 1 à 999 : films à l'affiche cette semaine (box-office puis autres films en salle), dans l'ordre.
+        // Rangs 1001 et suivants : films sortis ces 6 derniers mois mais plus en salle, classés par note.
+        val (thisWeek, earlier) = cinemaEntries.partition { it.rank < 1000 }
         // Films à l'affiche cherchés dans tout l'abonnement (« Street Fighter (2026) » rangé ailleurs que dans
         // « VOD Récemment ajouté »), mais seulement parmi les films de cette année ou de l'an dernier : jamais
         // l'homonyme ancien (« Street Fighter : L'Ultime combat (1994) »).
